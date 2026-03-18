@@ -160,42 +160,47 @@ router.post('/u/:username/inbox', async (req, res) => {
         return res.status(404).json({ error: 'Actor not found' });
     }
     
-    const activity = req.body;
-    console.log('[ActivityPub] Received activity:', activity.type);
-    
-    // Store activity
-    const stmt = db.prepare(`
-        INSERT OR IGNORE INTO activities (activity_id, type, actor, object, target, received_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-        activity.id || `${BASE_URL}/activities/${Date.now()}`,
-        activity.type,
-        typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor),
-        typeof activity.object === 'string' ? activity.object : JSON.stringify(activity.object),
-        activity.target ? JSON.stringify(activity.target) : null,
-        new Date().toISOString()
-    );
-    
-    // Process activity
-    switch (activity.type) {
-        case 'Like':
-            await handleLike(activity);
-            break;
-        case 'Announce':
-            await handleAnnounce(activity);
-            break;
-        case 'Create':
-            if (activity.object && activity.object.type === 'Note') {
-                await handleComment(activity);
-            }
-            break;
-        case 'Undo':
-            await handleUndo(activity);
-            break;
+    try {
+        const activity = req.body;
+        console.log('[ActivityPub] Received activity:', activity.type);
+        
+        // Store activity
+        const stmt = db.prepare(`
+            INSERT OR IGNORE INTO activities (activity_id, type, actor, object, target, received_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        stmt.run(
+            activity.id || `${BASE_URL}/activities/${Date.now()}`,
+            activity.type,
+            typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor),
+            typeof activity.object === 'string' ? activity.object : JSON.stringify(activity.object),
+            activity.target ? JSON.stringify(activity.target) : null,
+            new Date().toISOString()
+        );
+        
+        // Process activity
+        switch (activity.type) {
+            case 'Like':
+                await handleLike(activity);
+                break;
+            case 'Announce':
+                await handleAnnounce(activity);
+                break;
+            case 'Create':
+                if (activity.object && activity.object.type === 'Note') {
+                    await handleComment(activity);
+                }
+                break;
+            case 'Undo':
+                await handleUndo(activity);
+                break;
+        }
+        
+        res.status(202).json({ status: 'accepted' });
+    } catch (err) {
+        console.error('[ActivityPub] Error processing inbox:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
-    
-    res.status(202).json({ status: 'accepted' });
 });
 
 async function handleLike(activity) {

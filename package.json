@@ -10,14 +10,17 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug"
   },
-  "keywords": ["activitypub", "blog", "fediverse", "minimalist"],
+  "keywords": [
+    "activitypub",
+    "blog",
+    "fediverse",
+    "minimalist"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "activitypub-express": "^4.4.2",
     "better-sqlite3": "^12.8.0",
     "chokidar": "^5.0.0",
-    "crypto": "^1.0.1",
     "dotenv": "^17.3.1",
     "ejs": "^5.0.1",
     "express": "^5.2.1",

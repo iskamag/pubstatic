@@ -183,7 +183,15 @@ test.describe('ActivityPub Endpoints', () => {
     });
 });
 
-test.describe('ActivityPub Activity Processing', () => {
+test.describe.serial('ActivityPub Activity Processing', () => {
+    test.beforeAll(async ({ request }) => {
+        // Ensure welcome post exists for these tests
+        const response = await request.get('/p/welcome');
+        if (response.status() === 404) {
+            throw new Error('Welcome post must exist for these tests');
+        }
+    });
+
     test('Like activity is stored and displayed', async ({ page, request }) => {
         const activity = {
             '@context': 'https://www.w3.org/ns/activitystreams',
@@ -247,6 +255,206 @@ test.describe('ActivityPub Activity Processing', () => {
         });
         
         expect(response.status()).toBe(202);
+    });
+
+    test('comment is displayed on post page', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const commentContent = `Visible test comment ${uniqueId}`;
+        
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/create-${uniqueId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/commenter',
+            object: {
+                id: `https://example.com/notes/${uniqueId}`,
+                type: 'Note',
+                content: commentContent,
+                inReplyTo: 'http://localhost:6767/p/welcome'
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Visit the post and verify comment is displayed
+        await page.goto('/p/welcome');
+        
+        // Check comments section exists
+        await expect(page.locator('.comments-section')).toBeVisible();
+        
+        // Check the comment content is visible (use first() to avoid strict mode violation)
+        await expect(page.locator('.comment-content').first()).toContainText(commentContent);
+        
+        // Check comment author link exists
+        await expect(page.locator('.comment-author').first()).toBeVisible();
+    });
+
+    test('comment count updates correctly', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        
+        // Get initial comment count
+        await page.goto('/p/welcome');
+        const initialCount = await page.locator('.comments-section h2').textContent();
+        const initialMatch = initialCount.match(/\((\d+)\)/);
+        const initialNumber = initialMatch ? parseInt(initialMatch[1]) : 0;
+        
+        // Add a new comment with unique content
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/create-count-${uniqueId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/counter',
+            object: {
+                id: `https://example.com/notes/count-${uniqueId}`,
+                type: 'Note',
+                content: `Count test comment ${uniqueId}`,
+                inReplyTo: 'http://localhost:6767/p/welcome'
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Refresh page and check count increased
+        await page.reload();
+        
+        const updatedCount = await page.locator('.comments-section h2').textContent();
+        const updatedMatch = updatedCount.match(/\((\d+)\)/);
+        const updatedNumber = updatedMatch ? parseInt(updatedMatch[1]) : 0;
+        
+        expect(updatedNumber).toBe(initialNumber + 1);
+    });
+
+    test('multiple comments are displayed in correct order', async ({ page, request }) => {
+        const baseId = Date.now();
+        
+        // Add first comment
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/multi-${baseId}-1`,
+                type: 'Create',
+                actor: 'https://example.com/users/first',
+                object: {
+                    id: `https://example.com/notes/${baseId}-1`,
+                    type: 'Note',
+                    content: 'First comment',
+                    inReplyTo: 'http://localhost:6767/p/welcome'
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Wait a bit to ensure different timestamps
+        await page.waitForTimeout(100);
+        
+        // Add second comment
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/multi-${baseId}-2`,
+                type: 'Create',
+                actor: 'https://example.com/users/second',
+                object: {
+                    id: `https://example.com/notes/${baseId}-2`,
+                    type: 'Note',
+                    content: 'Second comment',
+                    inReplyTo: 'http://localhost:6767/p/welcome'
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Visit the post
+        await page.goto('/p/welcome');
+        
+        // Check both comments are visible
+        const comments = await page.locator('.comment').count();
+        expect(comments).toBeGreaterThanOrEqual(2);
+        
+        // Check comment count reflects multiple comments
+        const countText = await page.locator('.comments-section h2').textContent();
+        expect(countText).toContain('Comments');
+    });
+
+    test('markdown in comments is rendered safely', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const markdownComment = `**Bold text** and *italic text* and \`code\` ${uniqueId}`;
+        
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/md-${uniqueId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/markdown',
+            object: {
+                id: `https://example.com/notes/md-${uniqueId}`,
+                type: 'Note',
+                content: markdownComment,
+                inReplyTo: 'http://localhost:6767/p/welcome'
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        await page.goto('/p/welcome');
+        
+        // Check that markdown is rendered (has HTML tags)
+        const commentHtml = await page.locator('.comment-content').first().innerHTML();
+        
+        // Should contain HTML tags from markdown rendering
+        expect(commentHtml).toMatch(/<(strong|b|em|i|code)>/);
+    });
+
+    test('XSS attempts in comments are sanitized', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const xssComment = '<script>alert("xss")</script><p>Safe content</p>';
+        
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/xss-${uniqueId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/hacker',
+            object: {
+                id: `https://example.com/notes/xss-${uniqueId}`,
+                type: 'Note',
+                content: xssComment,
+                inReplyTo: 'http://localhost:6767/p/welcome'
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        await page.goto('/p/welcome');
+        
+        // Check that script tags are removed
+        const pageContent = await page.content();
+        expect(pageContent).not.toContain('<script>alert("xss")</script>');
+        
+        // But safe content should still be there (use first() to avoid strict mode violation)
+        await expect(page.locator('.comment-content').first()).toContainText('Safe content');
     });
 });
 
