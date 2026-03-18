@@ -1,0 +1,48 @@
+<section class="hero">
+    <h1>Recent Posts</h1>
+    <% if (tags.length > 0) { %>
+    <nav class="tags-nav">
+        <span class="tags-label">Tags:</span>
+        <% tags.forEach(tag => { %>
+        <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+        <% }); %>
+    </nav>
+    <% } %>
+</section>
+
+<% if (posts.length === 0) { %>
+    <div class="empty-state">
+        <p>No posts yet.</p>
+        <p>Create HTML files in the <code>content/posts/</code> folder to add posts.</p>
+    </div>
+<% } else { %>
+    <div class="posts-list">
+        <% posts.forEach(post => { %>
+        <article class="post-card">
+            <h2 class="post-title">
+                <a href="/p/<%= post.slug %>"><%= post.title %></a>
+            </h2>
+            <time class="post-date" datetime="<%= post.published_at %>">
+                <%= new Date(post.published_at).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                }) %>
+            </time>
+            <p class="post-excerpt"><%= post.excerpt %></p>
+            <% if (post.tags.length > 0) { %>
+            <div class="post-tags">
+                <% post.tags.forEach(tag => { %>
+                <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+                <% }); %>
+            </div>
+            <% } %>
+            <div class="post-stats">
+                <span class="stat">❤️ <%= post.likes_count %></span>
+                <span class="stat">💬 <%= post.comments_count %></span>
+                <span class="stat">🔄 <%= post.shares_count %></span>
+            </div>
+        </article>
+        <% }); %>
+    </div>
+<% } %>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="alternate" type="application/activity+json" href="<%= baseUrl %>/u/<%= user.preferredUsername %>">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a href="/" class="site-title"><%= user.name %></a>
+            <p class="site-description"><%= user.summary %></p>
+        </div>
+    </header>
+
+    <main class="container">
+        <%- body %>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>Powered by ActivityPub • <a href="<%= baseUrl %>/u/<%= user.preferredUsername %>" rel="me">Follow on Fediverse</a></p>
+        </div>
+    </footer>
+</body>
+</html>

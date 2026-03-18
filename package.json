@@ -1,0 +1,31 @@
+{
+  "name": "apub-blog",
+  "version": "1.0.0",
+  "description": "A minimalist ActivityPub-enabled blog with zero JavaScript frontend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug"
+  },
+  "keywords": ["activitypub", "blog", "fediverse", "minimalist"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "activitypub-express": "^4.4.2",
+    "better-sqlite3": "^12.8.0",
+    "chokidar": "^5.0.0",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.3.1",
+    "ejs": "^5.0.1",
+    "express": "^5.2.1",
+    "express-ejs-layouts": "^2.5.1",
+    "marked": "^17.0.4",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

@@ -1,0 +1,78 @@
+<article class="post-full">
+    <header class="post-header">
+        <h1 class="post-title"><%= post.title %></h1>
+        <div class="post-meta">
+            <time datetime="<%= post.published_at %>">
+                <%= new Date(post.published_at).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                }) %>
+            </time>
+            <% if (post.updated_at && post.updated_at !== post.published_at) { %>
+            <span class="updated">(Updated: <%= new Date(post.updated_at).toLocaleDateString() %>)</span>
+            <% } %>
+        </div>
+        <% if (post.tags.length > 0) { %>
+        <div class="post-tags">
+            <% post.tags.forEach(tag => { %>
+            <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+            <% }); %>
+        </div>
+        <% } %>
+    </header>
+    
+    <div class="post-content">
+        <%- post.content %>
+    </div>
+    
+    <footer class="post-footer">
+        <div class="activity-stats">
+            <div class="stat-item">
+                <span class="stat-icon">❤️</span>
+                <span class="stat-count"><%= likes.length %></span>
+                <span class="stat-label">Likes</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-icon">🔄</span>
+                <span class="stat-count"><%= shares.length %></span>
+                <span class="stat-label">Shares</span>
+            </div>
+        </div>
+        
+        <div class="activity-info">
+            <p>Interact with this post via ActivityPub:</p>
+            <code class="activity-id"><%= activityPubId %></code>
+        </div>
+    </footer>
+</article>
+
+<section class="comments-section">
+    <h2>Comments (<%= comments.length %>)</h2>
+    
+    <% if (comments.length === 0) { %>
+        <p class="no-comments">No comments yet. Reply from your ActivityPub instance!</p>
+    <% } else { %>
+        <div class="comments-list">
+            <% comments.forEach(comment => { %>
+            <article class="comment">
+                <header class="comment-header">
+                    <a href="<%= comment.actor_url %>" class="comment-author" target="_blank" rel="noopener">
+                        <%= comment.actor_name %>
+                    </a>
+                    <time datetime="<%= comment.created_at %>">
+                        <%= new Date(comment.created_at).toLocaleDateString() %>
+                    </time>
+                </header>
+                <div class="comment-content">
+                    <%- comment.content %>
+                </div>
+            </article>
+            <% }); %>
+        </div>
+    <% } %>
+</section>
+
+<nav class="post-nav">
+    <a href="/" class="back-link">← Back to all posts</a>
+</nav>
