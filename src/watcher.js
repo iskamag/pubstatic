@@ -13,50 +13,73 @@ if (!fs.existsSync(POSTS_DIR)) {
 function parsePostFile(filePath) {
     const content = fs.readFileSync(filePath, 'utf8');
     const stats = fs.statSync(filePath);
-    
+
     // Extract metadata from HTML comments or frontmatter
     // Format: <!--
     // title: My Post Title
     // tags: tag1, tag2, tag3
     // -->
     // <article>...</article>
-    
+
     let title = '';
     let tags = [];
     let excerpt = '';
     let htmlContent = content;
-    
+
     const metadataMatch = content.match(/^<!--\s*\n?([\s\S]*?)\n?-->\s*/);
     if (metadataMatch) {
         const metadata = metadataMatch[1];
-        
+
         const titleMatch = metadata.match(/^title:\s*(.+)$/m);
         if (titleMatch) title = titleMatch[1].trim();
-        
+
         const tagsMatch = metadata.match(/^tags:\s*(.+)$/m);
         if (tagsMatch) {
             tags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
         }
-        
+
         const excerptMatch = metadata.match(/^excerpt:\s*(.+)$/m);
         if (excerptMatch) excerpt = excerptMatch[1].trim();
-        
+
         htmlContent = content.slice(metadataMatch[0].length).trim();
     }
-    
+
+    // If no title from comments, try to extract from HTML <title> tag
+    if (!title) {
+        const titleTagMatch = content.match(/<title>([^<]+)<\/title>/i);
+        if (titleTagMatch) title = titleTagMatch[1].trim();
+    }
+
+    // If no excerpt from comments, try to extract from <div class="abstract">
+    if (!excerpt) {
+        const abstractMatch = content.match(/<div[^>]*class="abstract"[^>]*>([\s\S]*?)<\/div>/i);
+        if (abstractMatch) {
+            excerpt = abstractMatch[1].replace(/<[^>]+>/g, ' ').trim().slice(0, 200);
+            if (abstractMatch[1].length > 200) excerpt += '...';
+        }
+    }
+
+    // If no tags from comments, try to extract from <meta name="keywords">
+    if (tags.length === 0) {
+        const keywordsMatch = content.match(/<meta[^>]*name="keywords"[^>]*content="([^"]*)"[^>]*>/i);
+        if (keywordsMatch) {
+            tags = keywordsMatch[1].split(',').map(t => t.trim()).filter(t => t);
+        }
+    }
+
     // Derive slug from filename
     const slug = path.basename(filePath, '.html');
-    
+
     // If no title, use slug
     if (!title) title = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    
+
     // If no excerpt, generate from content (first 200 chars)
     if (!excerpt) {
         const textContent = htmlContent.replace(/<[^>]+>/g, ' ').trim();
         excerpt = textContent.slice(0, 200);
         if (textContent.length > 200) excerpt += '...';
     }
-    
+
     return {
         slug,
         title,
