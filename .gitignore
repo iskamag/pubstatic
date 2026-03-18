@@ -1,0 +1,6 @@
+node_modules
+content/posts/*
+data/*
+test-results/
+package-lock.json
+.env
