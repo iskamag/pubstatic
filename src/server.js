@@ -1,9 +1,10 @@
 const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
 const path = require('path');
+const fs = require('fs');
 const { DOMAIN, USERNAME, PORT, BASE_URL, ACTOR_URL, USER } = require('./config');
 const Posts = require('./models/posts');
-const { startWatcher } = require('./watcher');
+const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
 
 const app = express();
@@ -23,6 +24,28 @@ app.use(express.urlencoded({ extended: true }));
 
 // ActivityPub routes
 app.use(activitypubRoutes);
+
+// Test/sync endpoints (only available in test mode)
+if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
+    app.post('/api/sync-post', express.json(), (req, res) => {
+        const { filename } = req.body;
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename required' });
+        }
+        const filePath = path.join(__dirname, '..', 'content', 'posts', filename);
+        const post = syncPostFile(filePath);
+        if (post) {
+            res.json({ success: true, post });
+        } else {
+            res.status(404).json({ success: false, error: 'File not found' });
+        }
+    });
+    
+    app.post('/api/scan-posts', (req, res) => {
+        scanExistingFiles();
+        res.json({ success: true });
+    });
+}
 
 // WebFinger endpoint
 app.get('/.well-known/webfinger', (req, res) => {

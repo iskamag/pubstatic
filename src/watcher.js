@@ -89,14 +89,22 @@ function startWatcher() {
     // First, scan existing files
     scanExistingFiles();
 
-    const watcher = chokidar.watch(path.join(POSTS_DIR, '*.html'), {
-        ignored: /[\/\\]\./,
+    // Watch the directory itself, not just specific files
+    const watcher = chokidar.watch(POSTS_DIR, {
+        ignored: /(^|[\/\\])\../,  // Ignore dotfiles
         persistent: true,
-        ignoreInitial: true  // Don't process initial files again, we already did it
+        ignoreInitial: true,
+        depth: 0,  // Only watch the posts directory, not subdirectories
+        awaitWriteFinish: {
+            stabilityThreshold: 300,
+            pollInterval: 100
+        }
     });
 
     watcher
         .on('add', filePath => {
+            // Only process .html files
+            if (!filePath.endsWith('.html')) return;
             console.log(`[Watcher] Added: ${filePath}`);
             try {
                 const post = parsePostFile(filePath);
@@ -107,6 +115,8 @@ function startWatcher() {
             }
         })
         .on('change', filePath => {
+            // Only process .html files
+            if (!filePath.endsWith('.html')) return;
             console.log(`[Watcher] Changed: ${filePath}`);
             try {
                 const post = parsePostFile(filePath);
@@ -117,14 +127,38 @@ function startWatcher() {
             }
         })
         .on('unlink', filePath => {
+            // Only process .html files
+            if (!filePath.endsWith('.html')) return;
             console.log(`[Watcher] Removed: ${filePath}`);
             const slug = path.basename(filePath, '.html');
             Posts.deleteBySlug(slug);
             console.log(`[Watcher] Deleted post: ${slug}`);
+        })
+        .on('ready', () => {
+            console.log('[Watcher] Initial scan complete. Ready for changes...');
         })
         .on('error', error => console.error('[Watcher] Error:', error));
 
     return watcher;
 }
 
-module.exports = { startWatcher, parsePostFile };
+// Manual sync function for testing
+function syncPostFile(filePath) {
+    console.log(`[Watcher] Manual sync: ${filePath}`);
+    try {
+        if (fs.existsSync(filePath)) {
+            const post = parsePostFile(filePath);
+            Posts.createOrUpdate(post);
+            console.log(`[Watcher] Synced post: ${post.slug}`);
+            return post;
+        } else {
+            const slug = path.basename(filePath, '.html');
+            Posts.deleteBySlug(slug);
+            console.log(`[Watcher] Deleted post (file not found): ${slug}`);
+        }
+    } catch (err) {
+        console.error(`[Watcher] Error syncing ${filePath}:`, err.message);
+    }
+}
+
+module.exports = { startWatcher, parsePostFile, syncPostFile, scanExistingFiles };

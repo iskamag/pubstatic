@@ -24,7 +24,7 @@ module.exports = {
         }
     ],
     webServer: {
-        command: 'npm start',
+        command: 'NODE_ENV=test npm start',
         url: 'http://localhost:6767',
         reuseExistingServer: !process.env.CI,
         timeout: 120000

@@ -475,3 +475,195 @@ test.describe('Responsive Design', () => {
         await expect(page.locator('.post-card').first()).toBeVisible();
     });
 });
+
+test.describe.serial('File-based Post Management', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+    
+    // Increase timeout for file operations
+    test.setTimeout(30000);
+    
+    test.beforeAll(async () => {
+        // Ensure posts directory exists
+        if (!fs.existsSync(POSTS_DIR)) {
+            fs.mkdirSync(POSTS_DIR, { recursive: true });
+        }
+    });
+
+    test('creating a new post file adds it to the database', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `test-post-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postTitle = `Test Post ${uniqueId}`;
+        const postContent = '<p>This is a test post created by the test suite.</p>';
+        
+        // Create the post file
+        const fileContent = `<!--
+title: ${postTitle}
+tags: test, automated
+excerpt: Test post excerpt
+-->
+<article>
+    ${postContent}
+</article>`;
+        
+        fs.writeFileSync(postFile, fileContent);
+        
+        // Sync the post using the API
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify post appears on homepage
+        await page.goto('/');
+        await expect(page.locator('.post-title').first()).toContainText(postTitle, { timeout: 10000 });
+        
+        // Verify post page is accessible
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(postTitle);
+        await expect(page.locator('.post-content')).toContainText('This is a test post created by the test suite');
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('editing a post file updates the database', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `edit-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const originalTitle = `Original Title ${uniqueId}`;
+        const updatedTitle = `Updated Title ${uniqueId}`;
+        
+        // Create initial post
+        fs.writeFileSync(postFile, `<!--
+title: ${originalTitle}
+tags: test
+-->
+<article><p>Original content</p></article>`);
+        
+        // Sync the post
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify original title exists
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(originalTitle, { timeout: 10000 });
+        
+        // Edit the post file
+        fs.writeFileSync(postFile, `<!--
+title: ${updatedTitle}
+tags: test, updated
+-->
+<article><p>Updated content</p></article>`);
+        
+        // Sync the updated post
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify updated title appears
+        await page.reload();
+        await expect(page.locator('.post-title')).toContainText(updatedTitle);
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('deleting a post file removes it from the database', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `delete-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Create post
+        fs.writeFileSync(postFile, `<!--
+title: Delete Test ${uniqueId}
+tags: test
+-->
+<article><p>Content to delete</p></article>`);
+        
+        // Sync the post
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify post exists
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Delete Test ${uniqueId}`, { timeout: 10000 });
+        
+        // Delete the post file
+        fs.unlinkSync(postFile);
+        
+        // Sync to remove from database (file doesn't exist, so it will be deleted)
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify post returns 404
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.error-page')).toBeVisible();
+        await expect(page.locator('h1')).toContainText('404');
+        
+        // Verify post not on homepage
+        await page.goto('/');
+        const pageContent = await page.content();
+        expect(pageContent).not.toContain(`Delete Test ${uniqueId}`);
+    });
+
+    test('file watcher handles rapid file changes', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `rapid-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Create, update multiple times
+        for (let i = 0; i < 3; i++) {
+            fs.writeFileSync(postFile, `<!--
+title: Rapid Test ${uniqueId} v${i}
+tags: test
+-->
+<article><p>Version ${i}</p></article>`);
+            // Sync each version
+            await request.post('/api/sync-post', {
+                data: { filename: `${postSlug}.html` }
+            });
+        }
+        
+        // Verify final version is visible
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Rapid Test ${uniqueId} v2`, { timeout: 10000 });
+        await expect(page.locator('.post-content')).toContainText('Version 2', { timeout: 10000 });
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('posts without metadata use filename as title', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `no-metadata-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Create post without metadata
+        fs.writeFileSync(postFile, `<article><p>No metadata here</p></article>`);
+        
+        // Sync the post
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify post is accessible (slug becomes title)
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-full')).toBeVisible();
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+});
