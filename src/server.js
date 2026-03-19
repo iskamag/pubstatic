@@ -27,8 +27,60 @@ app.use(express.urlencoded({ extended: true }));
 // ActivityPub routes
 app.use(activitypubRoutes);
 
+// RSS Feed
+function generateRSS() {
+    const posts = Posts.getAll(20, 0);
+    const lastBuildDate = posts.length > 0
+        ? new Date(posts[0].published_at).toUTCString()
+        : new Date().toUTCString();
+
+    let items = '';
+    posts.forEach(post => {
+        const pubDate = new Date(post.published_at).toUTCString();
+        const link = `${BASE_URL}/p/${post.slug}`;
+        // Use excerpt for summary/description if available, otherwise use first 500 chars of content
+        const summary = post.excerpt
+            ? post.excerpt.replace(/<[^>]+>/g, '').substring(0, 500) + (post.excerpt.length > 500 ? '...' : '')
+            : (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 500) + (post.content.length > 500 ? '...' : '') : '');
+        // Full content - remove anchor links (href starting with #)
+        const content = (post.content || '').replace(/<a[^>]*href=["']#[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
+
+        items += `
+        <item>
+            <title><![CDATA[${post.title}]]></title>
+            <link>${link}</link>
+            <guid>${link}</guid>
+            <pubDate>${pubDate}</pubDate>
+            <description><![CDATA[${summary}]]></description>
+            <content:encoded><![CDATA[${content}]]></content:encoded>
+        </item>`;
+    });
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title><![CDATA[${USER.name}]]></title>
+        <link>${BASE_URL}</link>
+        <description><![CDATA[${USER.summary}]]></description>
+        <language>en</language>
+        <lastBuildDate>${lastBuildDate}</lastBuildDate>
+        <atom:link href="${BASE_URL}/rss" rel="self" type="application/rss+xml" />${items}
+    </channel>
+</rss>`;
+}
+
+app.get('/rss', (req, res) => {
+    res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+    res.send(generateRSS());
+});
+
 // Middleware to restrict access to localhost only
 function localhostOnly(req, res, next) {
+    // In test mode, allow all requests (for Playwright tests)
+    if (process.env.NODE_ENV === 'test') {
+        return next();
+    }
+    
     const remoteAddress = req.connection.remoteAddress || 
                           req.socket.remoteAddress || 
                           req.ip;

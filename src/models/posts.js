@@ -5,7 +5,7 @@ const path = require('path');
 class Posts {
     static getAll(limit = 10, offset = 0) {
         const stmt = db.prepare(`
-            SELECT id, slug, title, excerpt, published_at, updated_at, tags,
+            SELECT id, slug, title, content, excerpt, published_at, updated_at, tags,
                 (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
                 (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
                 (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count

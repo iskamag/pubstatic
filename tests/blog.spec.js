@@ -1359,3 +1359,150 @@ test.describe.serial('Actor Profile Federation', () => {
         });
     });
 });
+
+test.describe('RSS Feed', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+    test('RSS feed endpoint returns valid XML', async ({ request }) => {
+        const response = await request.get('/rss');
+        
+        expect(response.status()).toBe(200);
+        expect(response.headers()['content-type']).toContain('application/rss+xml');
+        
+        const body = await response.text();
+        expect(body).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+        expect(body).toContain('<rss version="2.0"');
+        expect(body).toContain('<channel>');
+        expect(body).toContain('</rss>');
+    });
+
+    test('RSS feed contains required channel elements', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        expect(body).toContain('<title>');
+        expect(body).toContain('<link>');
+        expect(body).toContain('<description>');
+        expect(body).toContain('<language>en</language>');
+        expect(body).toContain('<lastBuildDate>');
+        expect(body).toContain('</channel>');
+    });
+
+    test('RSS feed includes posts as items', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        expect(body).toContain('<item>');
+        expect(body).toContain('</item>');
+    });
+
+    test('RSS feed item contains required elements', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        // Check for item sub-elements
+        expect(body).toContain('<title>');
+        expect(body).toContain('<link>');
+        expect(body).toContain('<guid>');
+        expect(body).toContain('<pubDate>');
+        expect(body).toContain('<description>');
+    });
+
+    test('RSS feed item title is wrapped in CDATA', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        expect(body).toContain('<title><![CDATA[');
+    });
+
+    test('RSS feed description strips HTML tags', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        // Description should not contain HTML tags
+        const descriptionMatches = body.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/g);
+        if (descriptionMatches && descriptionMatches.length > 0) {
+            descriptionMatches.forEach(match => {
+                // Extract content between CDATA
+                const content = match.replace(/<description><!\[CDATA\[/, '').replace(/\]\]><\/description>/, '');
+                // Should not contain HTML tags
+                expect(content).not.toMatch(/<[a-z][^>]*>/i);
+            });
+        }
+    });
+
+    test('RSS feed includes full article content', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        // Should contain content namespace
+        expect(body).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
+        
+        // Should contain content:encoded elements
+        expect(body).toContain('<content:encoded>');
+        expect(body).toContain('</content:encoded>');
+        
+        // Content should contain actual HTML (not be empty)
+        const contentMatches = body.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/g);
+        if (contentMatches && contentMatches.length > 0) {
+            contentMatches.forEach(match => {
+                // Extract content between CDATA
+                const content = match.replace(/<content:encoded><!\[CDATA\[/, '').replace(/\]\]><\/content:encoded>/, '');
+                // Should contain actual content (not just empty)
+                expect(content.trim().length).toBeGreaterThan(0);
+            });
+        }
+    });
+
+    test('RSS feed updates when new post is created', async ({ request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `rss-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postTitle = `RSS Test Post ${uniqueId}`;
+        const postExcerpt = `This is a test post excerpt ${uniqueId}`;
+        
+        // Get initial RSS
+        const initialResponse = await request.get('/rss');
+        const initialBody = await initialResponse.text();
+        const initialItemCount = (initialBody.match(/<item>/g) || []).length;
+        
+        // Create a new post
+        fs.writeFileSync(postFile, `<!--
+title: ${postTitle}
+tags: test, rss
+-->
+<article><p>${postExcerpt}</p></article>`);
+        
+        // Sync the post
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Get updated RSS
+        const updatedResponse = await request.get('/rss');
+        const updatedBody = await updatedResponse.text();
+        const updatedItemCount = (updatedBody.match(/<item>/g) || []).length;
+        
+        // Should have one more item
+        expect(updatedItemCount).toBe(initialItemCount + 1);
+        
+        // Should contain the new post
+        expect(updatedBody).toContain(postTitle);
+        expect(updatedBody).toContain(postExcerpt);
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('RSS feed contains atom self-reference link', async ({ request }) => {
+        const response = await request.get('/rss');
+        const body = await response.text();
+        
+        expect(body).toContain('xmlns:atom="http://www.w3.org/2005/Atom"');
+        expect(body).toContain('<atom:link');
+        expect(body).toContain('rel="self"');
+    });
+});

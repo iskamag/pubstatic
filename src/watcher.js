@@ -6,10 +6,66 @@ const Posts = require('./models/posts');
 const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', 'user-settings.json');
 const PFP_FILE = path.join(__dirname, '..', 'public', 'pfp.png');
+const RSS_FILE = path.join(__dirname, '..', 'public', 'feed.xml');
 
 // Ensure posts directory exists
 if (!fs.existsSync(POSTS_DIR)) {
     fs.mkdirSync(POSTS_DIR, { recursive: true });
+}
+
+// Escape string for use in regex
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Generate and save RSS feed
+function updateRSS() {
+    const posts = Posts.getAll(20, 0);
+    const { BASE_URL, USER } = require('./config');
+    const lastBuildDate = posts.length > 0
+        ? new Date(posts[0].published_at).toUTCString()
+        : new Date().toUTCString();
+
+    let items = '';
+    posts.forEach(post => {
+        const pubDate = new Date(post.published_at).toUTCString();
+        const link = `${BASE_URL}/p/${post.slug}`;
+        // Use excerpt for summary/description if available, otherwise use first 500 chars of content
+        const summary = post.excerpt
+            ? post.excerpt.replace(/<[^>]+>/g, '').substring(0, 500) + (post.excerpt.length > 500 ? '...' : '')
+            : (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 500) + (post.content.length > 500 ? '...' : '') : '');
+        // Full content - remove anchor links (href starting with #)
+        const content = (post.content || '').replace(/<a[^>]*href=["']#[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
+
+        items += `
+        <item>
+            <title><![CDATA[${post.title}]]></title>
+            <link>${link}</link>
+            <guid>${link}</guid>
+            <pubDate>${pubDate}</pubDate>
+            <description><![CDATA[${summary}]]></description>
+            <content:encoded><![CDATA[${content}]]></content:encoded>
+        </item>`;
+    });
+
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title><![CDATA[${USER.name}]]></title>
+        <link>${BASE_URL}</link>
+        <description><![CDATA[${USER.summary}]]></description>
+        <language>en</language>
+        <lastBuildDate>${lastBuildDate}</lastBuildDate>
+        <atom:link href="${BASE_URL}/rss" rel="self" type="application/rss+xml" />${items}
+    </channel>
+</rss>`;
+
+    try {
+        fs.writeFileSync(RSS_FILE, rss);
+        console.log('[Watcher] RSS feed updated');
+    } catch (err) {
+        console.error('[Watcher] Error updating RSS feed:', err.message);
+    }
 }
 
 // Lazy load activitypub to avoid circular dependency issues
@@ -78,6 +134,30 @@ function parsePostFile(filePath) {
         }
     }
 
+    // For complete HTML documents (like rc.html), extract just the body content
+    // and remove duplicate title elements
+    if (htmlContent.includes('<html') || htmlContent.includes('<!DOCTYPE')) {
+        // Extract body content
+        const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) {
+            htmlContent = bodyMatch[1].trim();
+        }
+        
+        // Remove <h1 class="title"> or the first <h1> if it matches the post title
+        if (title) {
+            // Remove h1 with class="title" that contains the title text
+            const h1TitleRegex = new RegExp(`<h1[^>]*class=["']title["'][^>]*>[\\s\\S]*?${escapeRegex(title)}[\\s\\S]*?<\\/h1>`, 'i');
+            htmlContent = htmlContent.replace(h1TitleRegex, '');
+            
+            // Also remove any h1 that exactly matches the title
+            const exactH1Regex = new RegExp(`<h1[^>]*>\\s*${escapeRegex(title)}\\s*<\\/h1>`, 'i');
+            htmlContent = htmlContent.replace(exactH1Regex, '');
+        }
+        
+        // Clean up any empty lines left behind
+        htmlContent = htmlContent.replace(/\n\s*\n/g, '\n').trim();
+    }
+
     // If no tags from comments, try to extract from <meta name="keywords">
     if (tags.length === 0) {
         const keywordsMatch = content.match(/<meta[^>]*name="keywords"[^>]*content="([^"]*)"[^>]*>/i);
@@ -125,6 +205,8 @@ function scanExistingFiles() {
             }
         }
     });
+    // Update RSS feed after scanning all files
+    updateRSS();
 }
 
 function handleUserSettingsChange() {
@@ -194,7 +276,7 @@ function startWatcher() {
                 Posts.createOrUpdate(post);
                 console.log(`[Watcher] Created/updated post: ${post.slug}`);
                 
-                // If post didn't exist, this is a new post - queue Create activity
+                // If post didn't exist, this is a new post - queue Create activity and update RSS
                 if (!existing) {
                     const activitypub = getActivityPub();
                     if (activitypub.queuePostCreate) {
@@ -204,6 +286,8 @@ function startWatcher() {
                             console.log(`[Watcher] Queued Create activity for: ${post.slug}`);
                         }
                     }
+                    // Update RSS feed
+                    updateRSS();
                 }
             } catch (err) {
                 console.error(`[Watcher] Error parsing ${filePath}:`, err.message);
@@ -220,7 +304,7 @@ function startWatcher() {
                 Posts.createOrUpdate(post);
                 console.log(`[Watcher] Updated post: ${post.slug}`);
                 
-                // If post already existed, this is an edit - queue Update activity
+                // If post already existed, this is an edit - queue Update activity and update RSS
                 if (existing) {
                     const activitypub = getActivityPub();
                     if (activitypub.queuePostUpdate) {
@@ -230,6 +314,8 @@ function startWatcher() {
                             console.log(`[Watcher] Queued Update activity for: ${post.slug}`);
                         }
                     }
+                    // Update RSS feed
+                    updateRSS();
                 }
             } catch (err) {
                 console.error(`[Watcher] Error parsing ${filePath}:`, err.message);
@@ -242,6 +328,8 @@ function startWatcher() {
             const slug = path.basename(filePath, '.html');
             Posts.deleteBySlug(slug);
             console.log(`[Watcher] Deleted post: ${slug}`);
+            // Update RSS feed after deletion
+            updateRSS();
         })
         .on('ready', () => {
             console.log('[Watcher] Initial scan complete. Ready for changes...');
@@ -303,12 +391,17 @@ function syncPostFile(filePath) {
                     }
                 }
             }
-            
+
+            // Update RSS feed
+            updateRSS();
+
             return post;
         } else {
             const slug = path.basename(filePath, '.html');
             Posts.deleteBySlug(slug);
             console.log(`[Watcher] Deleted post (file not found): ${slug}`);
+            // Update RSS feed after deletion
+            updateRSS();
         }
     } catch (err) {
         console.error(`[Watcher] Error syncing ${filePath}:`, err.message);
