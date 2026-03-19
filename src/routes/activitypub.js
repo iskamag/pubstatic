@@ -188,6 +188,16 @@ router.post('/u/:username/inbox', async (req, res) => {
     }
     
     try {
+        // Verify HTTP Signature for security (skip in test mode)
+        if (process.env.NODE_ENV !== 'test') {
+            const sigVerify = await verifyHttpSignature(req);
+            
+            if (!sigVerify.valid) {
+                console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
+                return res.status(401).json({ error: 'Unauthorized', details: sigVerify.error });
+            }
+        }
+        
         const activity = req.body;
         console.log('[ActivityPub] Received activity:', activity.type);
         
@@ -207,6 +217,9 @@ router.post('/u/:username/inbox', async (req, res) => {
         
         // Process activity
         switch (activity.type) {
+            case 'Follow':
+                await handleFollow(activity);
+                break;
             case 'Like':
                 await handleLike(activity);
                 break;
@@ -371,6 +384,70 @@ async function handleUndo(activity) {
         const stmt = db.prepare('DELETE FROM shares WHERE activity_id = ?');
         stmt.run(activityId);
         console.log(`[ActivityPub] Undid announce: ${activityId}`);
+    } else if (objectType === 'Follow') {
+        const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
+        stmt.run(activityId);
+        console.log(`[ActivityPub] Undid follow: ${activityId}`);
+    }
+}
+
+async function handleFollow(activity) {
+    const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
+    const actorUrl = typeof activity.actor === 'string' ? activity.actor : (activity.actor.id || activity.actor.url);
+    
+    try {
+        // Fetch actor info to get their inbox
+        const actorResponse = await fetch(actorId, {
+            headers: { 'Accept': 'application/activity+json' }
+        });
+        
+        if (!actorResponse.ok) {
+            console.error(`[ActivityPub] Could not fetch actor info for follow: ${actorResponse.status}`);
+            return;
+        }
+        
+        const actor = await actorResponse.json();
+        const inboxUrl = actor.inbox;
+        
+        if (!inboxUrl) {
+            console.error('[ActivityPub] Actor has no inbox');
+            return;
+        }
+        
+        // Store follower
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO followers (actor_id, actor_url, inbox_url, followed_at)
+            VALUES (?, ?, ?, ?)
+        `);
+        stmt.run(actorId, actorUrl, inboxUrl, new Date().toISOString());
+        console.log(`[ActivityPub] Added follower: ${actorId}`);
+        
+        // Send Accept activity
+        const acceptActivity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `${BASE_URL}/activities/${Date.now()}`,
+            type: 'Accept',
+            actor: ACTOR_URL,
+            object: activity.id
+        };
+        
+        const body = JSON.stringify(acceptActivity);
+        const headers = signRequest(inboxUrl, 'POST', body, keys.privateKey, `${ACTOR_URL}#main-key`);
+        
+        const response = await fetch(inboxUrl, {
+            method: 'POST',
+            headers: headers,
+            body: body
+        });
+        
+        if (response.ok) {
+            console.log(`[ActivityPub] Sent Accept to ${inboxUrl}`);
+        } else {
+            console.error(`[ActivityPub] Failed to send Accept: ${response.status}`);
+        }
+        
+    } catch (err) {
+        console.error('[ActivityPub] Error handling follow:', err.message);
     }
 }
 
@@ -380,14 +457,24 @@ router.get('/u/:username/followers', (req, res) => {
         return res.status(404).json({ error: 'Actor not found' });
     }
     
-    res.set('Content-Type', 'application/activity+json');
-    res.json({
-        '@context': 'https://www.w3.org/ns/activitystreams',
-        id: USER.followers,
-        type: 'OrderedCollection',
-        totalItems: 0,
-        orderedItems: []
-    });
+    try {
+        const stmt = db.prepare('SELECT actor_id, followed_at FROM followers ORDER BY followed_at DESC');
+        const followers = stmt.all();
+        
+        const orderedItems = followers.map(f => f.actor_id);
+        
+        res.set('Content-Type', 'application/activity+json');
+        res.json({
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: USER.followers,
+            type: 'OrderedCollection',
+            totalItems: followers.length,
+            orderedItems: orderedItems
+        });
+    } catch (err) {
+        console.error('[ActivityPub] Error fetching followers:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Following endpoint
@@ -405,6 +492,101 @@ router.get('/u/:username/following', (req, res) => {
         orderedItems: []
     });
 });
+
+// Parse HTTP Signature header
+function parseSignatureHeader(signatureHeader) {
+    const parts = {};
+    const regex = /(\w+)="([^"]+)"/g;
+    let match;
+    while ((match = regex.exec(signatureHeader)) !== null) {
+        parts[match[1]] = match[2];
+    }
+    return parts;
+}
+
+// Verify HTTP Signature for incoming requests
+async function verifyHttpSignature(req) {
+    const signatureHeader = req.headers['signature'];
+    const digestHeader = req.headers['digest'];
+    const dateHeader = req.headers['date'];
+    
+    if (!signatureHeader) {
+        return { valid: false, error: 'Missing Signature header' };
+    }
+    
+    const sigParts = parseSignatureHeader(signatureHeader);
+    
+    if (!sigParts.keyId || !sigParts.signature) {
+        return { valid: false, error: 'Invalid Signature header format' };
+    }
+    
+    // Fetch the actor's public key
+    try {
+        const actorResponse = await fetch(sigParts.keyId, {
+            headers: { 'Accept': 'application/activity+json' }
+        });
+        
+        if (!actorResponse.ok) {
+            return { valid: false, error: `Failed to fetch actor: ${actorResponse.status}` };
+        }
+        
+        const actor = await actorResponse.json();
+        
+        if (!actor.publicKey || !actor.publicKey.publicKeyPem) {
+            return { valid: false, error: 'Actor has no public key' };
+        }
+        
+        // Verify digest if present
+        if (digestHeader && digestHeader.startsWith('SHA-256=')) {
+            const expectedDigest = crypto.createHash('sha256')
+                .update(JSON.stringify(req.body))
+                .digest('base64');
+            const providedDigest = digestHeader.substring(8);
+            
+            if (expectedDigest !== providedDigest) {
+                return { valid: false, error: 'Digest mismatch' };
+            }
+        }
+        
+        // Build signing string
+        const headers = sigParts.headers || '(request-target)';
+        const headersList = headers.split(' ');
+        
+        const urlObj = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        const requestTarget = `${req.method.toLowerCase()} ${urlObj.pathname}`;
+        
+        const signingParts = [];
+        for (const header of headersList) {
+            if (header === '(request-target)') {
+                signingParts.push(`(request-target): ${requestTarget}`);
+            } else if (header === 'host') {
+                signingParts.push(`host: ${req.get('host')}`);
+            } else if (header === 'date') {
+                signingParts.push(`date: ${dateHeader}`);
+            } else if (header === 'digest') {
+                signingParts.push(`digest: ${digestHeader}`);
+            }
+        }
+        
+        const signingString = signingParts.join('\n');
+        
+        // Verify signature
+        const verifier = crypto.createVerify('rsa-sha256');
+        verifier.update(signingString);
+        
+        const isValid = verifier.verify(actor.publicKey.publicKeyPem, sigParts.signature, 'base64');
+        
+        if (!isValid) {
+            return { valid: false, error: 'Signature verification failed' };
+        }
+        
+        return { valid: true, actor: actor };
+        
+    } catch (err) {
+        console.error('[ActivityPub] Signature verification error:', err.message);
+        return { valid: false, error: `Verification error: ${err.message}` };
+    }
+}
 
 // HTTP Signature functions for outbound federation
 function generateHttpSignature(requestTarget, headers, privateKey) {

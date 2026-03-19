@@ -27,8 +27,31 @@ app.use(express.urlencoded({ extended: true }));
 // ActivityPub routes
 app.use(activitypubRoutes);
 
-// Test/sync endpoints (only available in test mode)
+// Middleware to restrict access to localhost only
+function localhostOnly(req, res, next) {
+    const remoteAddress = req.connection.remoteAddress || 
+                          req.socket.remoteAddress || 
+                          req.ip;
+    
+    // Check if request is from localhost
+    const isLocalhost = remoteAddress === '127.0.0.1' || 
+                        remoteAddress === '::1' || 
+                        remoteAddress === '::ffff:127.0.0.1' ||
+                        remoteAddress === 'localhost';
+    
+    if (!isLocalhost) {
+        console.warn(`[Security] Blocked request from non-localhost IP: ${remoteAddress}`);
+        return res.status(403).json({ error: 'Forbidden - Localhost only' });
+    }
+    
+    next();
+}
+
+// Test/sync endpoints (only available in test mode AND localhost only)
 if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
+    // Apply localhost-only restriction to all test APIs
+    app.use('/api', localhostOnly);
+    
     app.post('/api/sync-post', express.json(), (req, res) => {
         const { filename } = req.body;
         if (!filename) {
