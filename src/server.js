@@ -18,6 +18,7 @@ app.set('layout', 'layout');
 
 // Static files
 app.use('/static', express.static(path.join(__dirname, '..', 'public')));
+app.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
 
 // Body parsing
 app.use(express.json({ type: ['application/json', 'application/activity+json', 'application/ld+json'] }));
@@ -99,6 +100,20 @@ if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
         try {
             db.prepare('DELETE FROM outbound_activities').run();
             res.json({ success: true, message: 'Outbound activities cleared' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.post('/api/sync-user-settings', (req, res) => {
+        try {
+            const watcher = require('./watcher');
+            if (watcher.syncUserSettings) {
+                watcher.syncUserSettings();
+                res.json({ success: true, message: 'User settings synced' });
+            } else {
+                res.status(500).json({ error: 'syncUserSettings not available' });
+            }
         } catch (err) {
             res.status(500).json({ error: err.message });
         }

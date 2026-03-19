@@ -11,6 +11,21 @@ const { marked } = require('marked');
 const router = express.Router();
 
 const KEYS_FILE = path.join(__dirname, '..', '..', 'data', 'keys.json');
+const USER_SETTINGS_FILE = path.join(__dirname, '..', '..', 'user-settings.json');
+const PFP_FILE = path.join(__dirname, '..', '..', 'public', 'pfp.png');
+
+// Load user settings from JSON file
+function loadUserSettings() {
+    try {
+        if (fs.existsSync(USER_SETTINGS_FILE)) {
+            const settings = JSON.parse(fs.readFileSync(USER_SETTINGS_FILE, 'utf8'));
+            return settings;
+        }
+    } catch (err) {
+        console.error('[ActivityPub] Error loading user settings:', err.message);
+    }
+    return {};
+}
 
 // Escape string for use in regex
 function escapeRegex(string) {
@@ -86,13 +101,25 @@ router.get('/u/:username', (req, res) => {
         return res.status(404).json({ error: 'Actor not found' });
     }
     
+    // Load user settings from JSON file
+    const userSettings = loadUserSettings();
+    
+    // Determine avatar URL: use settings override, or check for pfp.png, or use default
+    let avatarUrl = userSettings.avatar_url;
+    if (!avatarUrl && fs.existsSync(PFP_FILE)) {
+        avatarUrl = `${BASE_URL}/pfp.png`;
+    }
+    if (!avatarUrl) {
+        avatarUrl = USER.icon;
+    }
+    
     const actor = {
         '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
         id: ACTOR_URL,
         type: 'Person',
         preferredUsername: USER.preferredUsername,
-        name: USER.name,
-        summary: USER.summary,
+        name: userSettings.display_name || USER.name,
+        summary: userSettings.bio || USER.summary,
         inbox: USER.inbox,
         outbox: USER.outbox,
         followers: USER.followers,
@@ -104,11 +131,11 @@ router.get('/u/:username', (req, res) => {
         }
     };
     
-    if (USER.icon) {
+    if (avatarUrl) {
         actor.icon = {
             type: 'Image',
             mediaType: 'image/png',
-            url: USER.icon
+            url: avatarUrl
         };
     }
     
@@ -598,6 +625,37 @@ function queuePostCreate(post) {
     return queueOutboundActivity('Create', article);
 }
 
+// Queue an Update activity for the actor (profile changes)
+function queueActorUpdate(actorData) {
+    const actor = {
+        '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
+        id: ACTOR_URL,
+        type: 'Person',
+        preferredUsername: actorData.preferredUsername || USERNAME,
+        name: actorData.name,
+        summary: actorData.summary,
+        inbox: `${BASE_URL}/u/${USERNAME}/inbox`,
+        outbox: `${BASE_URL}/u/${USERNAME}/outbox`,
+        followers: `${BASE_URL}/u/${USERNAME}/followers`,
+        following: `${BASE_URL}/u/${USERNAME}/following`,
+        publicKey: {
+            id: `${ACTOR_URL}#main-key`,
+            owner: ACTOR_URL,
+            publicKeyPem: keys.publicKey
+        }
+    };
+    
+    if (actorData.icon) {
+        actor.icon = {
+            type: 'Image',
+            mediaType: 'image/png',
+            url: actorData.icon
+        };
+    }
+    
+    return queueOutboundActivity('Update', actor);
+}
+
 // Start background delivery processor (every 60 seconds)
 setInterval(() => {
     processOutboundActivities().catch(err => {
@@ -609,4 +667,5 @@ module.exports = router;
 module.exports.queueOutboundActivity = queueOutboundActivity;
 module.exports.queuePostUpdate = queuePostUpdate;
 module.exports.queuePostCreate = queuePostCreate;
+module.exports.queueActorUpdate = queueActorUpdate;
 module.exports.processOutboundActivities = processOutboundActivities;

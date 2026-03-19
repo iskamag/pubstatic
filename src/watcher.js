@@ -4,6 +4,8 @@ const fs = require('fs');
 const Posts = require('./models/posts');
 
 const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+const USER_SETTINGS_FILE = path.join(__dirname, '..', 'user-settings.json');
+const PFP_FILE = path.join(__dirname, '..', 'public', 'pfp.png');
 
 // Ensure posts directory exists
 if (!fs.existsSync(POSTS_DIR)) {
@@ -13,6 +15,18 @@ if (!fs.existsSync(POSTS_DIR)) {
 // Lazy load activitypub to avoid circular dependency issues
 function getActivityPub() {
     return require('./routes/activitypub');
+}
+
+// Load user settings from JSON file
+function loadUserSettings() {
+    try {
+        if (fs.existsSync(USER_SETTINGS_FILE)) {
+            return JSON.parse(fs.readFileSync(USER_SETTINGS_FILE, 'utf8'));
+        }
+    } catch (err) {
+        console.error('[Watcher] Error loading user settings:', err.message);
+    }
+    return {};
 }
 
 function parsePostFile(filePath) {
@@ -113,13 +127,42 @@ function scanExistingFiles() {
     });
 }
 
+function handleUserSettingsChange() {
+    console.log('[Watcher] User settings or profile picture changed');
+    try {
+        const userSettings = loadUserSettings();
+        
+        // Determine avatar URL
+        let avatarUrl = userSettings.avatar_url;
+        if (!avatarUrl && fs.existsSync(PFP_FILE)) {
+            const { BASE_URL } = require('./config');
+            avatarUrl = `${BASE_URL}/pfp.png`;
+        }
+        
+        // Queue actor update for federation
+        const activitypub = getActivityPub();
+        if (activitypub.queueActorUpdate) {
+            const { USERNAME, USER } = require('./config');
+            activitypub.queueActorUpdate({
+                preferredUsername: USERNAME,
+                name: userSettings.display_name || USER.name,
+                summary: userSettings.bio || USER.summary,
+                icon: avatarUrl
+            });
+            console.log('[Watcher] Queued actor Update activity for profile change');
+        }
+    } catch (err) {
+        console.error('[Watcher] Error handling user settings change:', err.message);
+    }
+}
+
 function startWatcher() {
     // First, scan existing files
     scanExistingFiles();
 
-    // Watch the directory itself, not just specific files
-    const watcher = chokidar.watch(POSTS_DIR, {
-        ignored: /(^|[\/\\])\../,  // Ignore dotfiles
+    // Watch the posts directory
+    const postsWatcher = chokidar.watch(POSTS_DIR, {
+        ignored: /(^|[\\/])\../,  // Ignore dotfiles
         persistent: true,
         ignoreInitial: true,
         depth: 0,  // Only watch the posts directory, not subdirectories
@@ -129,7 +172,17 @@ function startWatcher() {
         }
     });
 
-    watcher
+    // Watch user settings file (which may not exist initially)
+    const settingsWatcher = chokidar.watch(USER_SETTINGS_FILE, {
+        persistent: true,
+        ignoreInitial: false,  // Process existing file on startup
+        awaitWriteFinish: {
+            stabilityThreshold: 300,
+            pollInterval: 100
+        }
+    });
+
+    postsWatcher
         .on('add', filePath => {
             // Only process .html files
             if (!filePath.endsWith('.html')) return;
@@ -195,7 +248,27 @@ function startWatcher() {
         })
         .on('error', error => console.error('[Watcher] Error:', error));
 
-    return watcher;
+    // Handle user settings changes (only add and change, not unlink)
+    settingsWatcher
+        .on('add', filePath => {
+            if (filePath === USER_SETTINGS_FILE) {
+                handleUserSettingsChange();
+            }
+        })
+        .on('change', filePath => {
+            if (filePath === USER_SETTINGS_FILE) {
+                handleUserSettingsChange();
+            }
+        })
+        .on('error', error => console.error('[Watcher] Settings watcher error:', error));
+
+    return { postsWatcher, settingsWatcher };
+}
+
+// Manual sync function for user settings (for testing)
+function syncUserSettings() {
+    console.log('[Watcher] Manual sync of user settings');
+    handleUserSettingsChange();
 }
 
 // Manual sync function for testing
@@ -242,4 +315,4 @@ function syncPostFile(filePath) {
     }
 }
 
-module.exports = { startWatcher, parsePostFile, syncPostFile, scanExistingFiles };
+module.exports = { startWatcher, parsePostFile, syncPostFile, scanExistingFiles, syncUserSettings };

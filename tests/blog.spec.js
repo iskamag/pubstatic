@@ -1190,3 +1190,172 @@ tags: test
         });
     });
 });
+
+test.describe.serial('Actor Profile Federation', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const USER_SETTINGS_FILE = path.join(__dirname, '..', 'user-settings.json');
+    const PFP_FILE = path.join(__dirname, '..', 'public', 'pfp.png');
+    
+    test.beforeAll(async ({ request }) => {
+        // Clean up before all tests in this group
+        if (fs.existsSync(USER_SETTINGS_FILE)) {
+            fs.unlinkSync(USER_SETTINGS_FILE);
+        }
+        await request.post('/api/clear-outbound-activities');
+    });
+    
+    test.afterAll(async () => {
+        // Clean up after all tests
+        if (fs.existsSync(USER_SETTINGS_FILE)) {
+            fs.unlinkSync(USER_SETTINGS_FILE);
+        }
+    });
+    
+    test.beforeEach(async ({ request }) => {
+        // Clean up user-settings.json before each test to ensure fresh state
+        if (fs.existsSync(USER_SETTINGS_FILE)) {
+            fs.unlinkSync(USER_SETTINGS_FILE);
+        }
+        // Clear outbound activities before each test
+        await request.post('/api/clear-outbound-activities');
+        // Wait for file watcher to settle
+        await new Promise(resolve => setTimeout(resolve, 100));
+    });
+
+    test('actor endpoint includes default profile picture from pfp.png', async ({ request }) => {
+        // Ensure pfp.png exists (it should be created from catperson.png)
+        expect(fs.existsSync(PFP_FILE)).toBe(true);
+        
+        const response = await request.get('/u/admin');
+        
+        expect(response.status()).toBe(200);
+        const data = await response.json();
+        
+        expect(data.icon).toBeDefined();
+        expect(data.icon.type).toBe('Image');
+        expect(data.icon.url).toContain('pfp.png');
+    });
+
+    test('updating user-settings.json queues Update activity for actor', async ({ request }) => {
+        const uniqueId = Date.now();
+        const followerInbox = `https://example.com/users/settings-follower-${uniqueId}/inbox`;
+        const newDisplayName = `Test User ${uniqueId}`;
+        const newBio = `Test bio ${uniqueId}`;
+        
+        // Add a follower
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/settings-follower-${uniqueId}`,
+                actor_url: `https://example.com/users/settings-follower-${uniqueId}`,
+                inbox_url: followerInbox
+            }
+        });
+        
+        // Create user-settings.json file
+        const settings = {
+            display_name: newDisplayName,
+            bio: newBio
+        };
+        fs.writeFileSync(USER_SETTINGS_FILE, JSON.stringify(settings, null, 2));
+        
+        // Sync user settings to trigger federation
+        await request.post('/api/sync-user-settings');
+        
+        // Verify actor now returns the new settings
+        const actorResponse = await request.get('/u/admin');
+        const actorData = await actorResponse.json();
+        
+        expect(actorData.name).toBe(newDisplayName);
+        expect(actorData.summary).toBe(newBio);
+        expect(actorData.icon).toBeDefined();
+        expect(actorData.icon.url).toContain('pfp.png');
+        
+        // Verify Update activity was queued for the actor
+        const outboundResponse = await request.get('/api/outbound-activities');
+        const outboundData = await outboundResponse.json();
+        
+        const actorUpdateActivity = outboundData.activities.find(a => 
+            a.type === 'Update' && 
+            a.object && 
+            a.object.includes('Person') &&
+            a.object.includes(newDisplayName)
+        );
+        
+        expect(actorUpdateActivity, 'Actor Update activity should be queued for federation').toBeDefined();
+        expect(actorUpdateActivity.type).toBe('Update');
+        expect(actorUpdateActivity.recipients).toContain(followerInbox);
+        
+        // Verify the activity contains the actor with the new settings
+        const activityObject = JSON.parse(actorUpdateActivity.object);
+        expect(activityObject.type).toBe('Person');
+        expect(activityObject.name).toBe(newDisplayName);
+        expect(activityObject.summary).toBe(newBio);
+        expect(activityObject.icon).toBeDefined();
+        
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/settings-follower-${uniqueId}` }
+        });
+    });
+
+    test('user settings change includes all actor properties', async ({ request }) => {
+        const uniqueId = Date.now();
+        const newDisplayName = `Complete Test ${uniqueId}`;
+        const newBio = `Complete bio ${uniqueId}`;
+        
+        // Add a follower
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/complete-settings-follower-${uniqueId}`,
+                actor_url: `https://example.com/users/complete-settings-follower-${uniqueId}`,
+                inbox_url: `https://example.com/users/complete-settings-follower-${uniqueId}/inbox`
+            }
+        });
+        
+        // Create user-settings.json with avatar override
+        const settings = {
+            display_name: newDisplayName,
+            bio: newBio,
+            avatar_url: `https://example.com/avatars/settings-test-${uniqueId}.png`
+        };
+        fs.writeFileSync(USER_SETTINGS_FILE, JSON.stringify(settings, null, 2));
+        
+        // Sync user settings to trigger federation
+        await request.post('/api/sync-user-settings');
+        
+        // Get the outbound activity
+        const outboundResponse = await request.get('/api/outbound-activities');
+        const outboundData = await outboundResponse.json();
+        
+        const actorUpdateActivity = outboundData.activities.find(a => 
+            a.type === 'Update' && 
+            a.object && 
+            a.object.includes('Person')
+        );
+        
+        expect(actorUpdateActivity).toBeDefined();
+        
+        const activityObject = JSON.parse(actorUpdateActivity.object);
+        
+        // Verify all required actor properties are present
+        expect(activityObject['@context']).toBeDefined();
+        expect(activityObject.id).toBeDefined();
+        expect(activityObject.type).toBe('Person');
+        expect(activityObject.preferredUsername).toBeDefined();
+        expect(activityObject.name).toBe(newDisplayName);
+        expect(activityObject.summary).toBe(newBio);
+        expect(activityObject.inbox).toBeDefined();
+        expect(activityObject.outbox).toBeDefined();
+        expect(activityObject.followers).toBeDefined();
+        expect(activityObject.following).toBeDefined();
+        expect(activityObject.publicKey).toBeDefined();
+        expect(activityObject.icon).toBeDefined();
+        expect(activityObject.icon.type).toBe('Image');
+        expect(activityObject.icon.mediaType).toBe('image/png');
+        expect(activityObject.icon.url).toBe(settings.avatar_url);
+        
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/complete-settings-follower-${uniqueId}` }
+        });
+    });
+});
