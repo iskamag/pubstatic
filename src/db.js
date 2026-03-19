@@ -73,6 +73,27 @@ db.exec(`
         received_at TEXT NOT NULL,
         processed BOOLEAN DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS outbound_activities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        activity_id TEXT UNIQUE NOT NULL,
+        type TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        object TEXT NOT NULL,
+        recipients TEXT NOT NULL, -- JSON array of inbox URLs
+        created_at TEXT NOT NULL,
+        delivered_at TEXT,
+        delivery_attempts INTEGER DEFAULT 0,
+        last_error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS followers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_id TEXT UNIQUE NOT NULL,
+        actor_url TEXT NOT NULL,
+        inbox_url TEXT NOT NULL,
+        followed_at TEXT NOT NULL
+    );
 `);
 
 // Migration: Add parent_id column to existing comments table

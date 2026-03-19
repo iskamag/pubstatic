@@ -6,6 +6,7 @@ const { DOMAIN, USERNAME, PORT, BASE_URL, ACTOR_URL, USER } = require('./config'
 const Posts = require('./models/posts');
 const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
+const db = require('./db');
 
 const app = express();
 
@@ -44,6 +45,63 @@ if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
     app.post('/api/scan-posts', (req, res) => {
         scanExistingFiles();
         res.json({ success: true });
+    });
+
+    // Test endpoints for federation testing
+    app.post('/api/add-follower', (req, res) => {
+        const { actor_id, actor_url, inbox_url } = req.body;
+        if (!actor_id || !inbox_url) {
+            return res.status(400).json({ error: 'actor_id and inbox_url required' });
+        }
+
+        try {
+            const stmt = db.prepare(`
+                INSERT OR REPLACE INTO followers (actor_id, actor_url, inbox_url, followed_at)
+                VALUES (?, ?, ?, ?)
+            `);
+            stmt.run(actor_id, actor_url || actor_id, inbox_url, new Date().toISOString());
+            res.json({ success: true, message: 'Follower added' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.post('/api/remove-follower', (req, res) => {
+        const { actor_id } = req.body;
+        if (!actor_id) {
+            return res.status(400).json({ error: 'actor_id required' });
+        }
+
+        try {
+            const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
+            stmt.run(actor_id);
+            res.json({ success: true, message: 'Follower removed' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.get('/api/outbound-activities', (req, res) => {
+        try {
+            const stmt = db.prepare(`
+                SELECT * FROM outbound_activities
+                ORDER BY created_at DESC
+                LIMIT 50
+            `);
+            const activities = stmt.all();
+            res.json({ activities });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.post('/api/clear-outbound-activities', (req, res) => {
+        try {
+            db.prepare('DELETE FROM outbound_activities').run();
+            res.json({ success: true, message: 'Outbound activities cleared' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 }
 

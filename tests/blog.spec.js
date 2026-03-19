@@ -903,4 +903,290 @@ tags: test
             fs.unlinkSync(postFile);
         }
     });
+
+    test('creating a new post queues Create activity for federation', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `create-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const followerInbox = `https://example.com/users/new-follower-${uniqueId}/inbox`;
+        
+        // Clear any existing outbound activities first
+        await request.post('/api/clear-outbound-activities');
+        
+        // Add a follower to the database
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/new-follower-${uniqueId}`,
+                actor_url: `https://example.com/users/new-follower-${uniqueId}`,
+                inbox_url: followerInbox
+            }
+        });
+        
+        // Create a new post
+        const postTitle = `New Post for Federation ${uniqueId}`;
+        const postContent = '<p>This is a brand new post that should be federated.</p>';
+        fs.writeFileSync(postFile, `<!--
+title: ${postTitle}
+tags: test, new, federation
+excerpt: New post for federation test
+-->
+<article>${postContent}</article>`);
+        
+        // Sync the post (this creates it, should queue Create activity)
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify the post appears on the site
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(postTitle, { timeout: 10000 });
+        await expect(page.locator('.post-content')).toContainText('This is a brand new post that should be federated');
+        
+        // Verify Create activity was queued in outbound_activities table
+        const outboundResponse = await request.get('/api/outbound-activities');
+        expect(outboundResponse.status()).toBe(200);
+        const outboundData = await outboundResponse.json();
+        
+        // Find the Create activity for this post
+        const createActivity = outboundData.activities.find(a => 
+            a.type === 'Create' && 
+            a.object && 
+            a.object.includes(postSlug)
+        );
+        
+        expect(createActivity, 'Create activity should be queued for federation').toBeDefined();
+        expect(createActivity.type).toBe('Create');
+        expect(createActivity.recipients).toContain(followerInbox);
+        
+        // Verify the activity contains the correct article data
+        const activityObject = JSON.parse(createActivity.object);
+        expect(activityObject.name).toBe(postTitle);
+        expect(activityObject.content).toContain('This is a brand new post that should be federated');
+        expect(activityObject.type).toBe('Article');
+        expect(activityObject.id).toContain(postSlug);
+        expect(activityObject.published).toBeDefined();
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+        
+        // Remove the follower
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/new-follower-${uniqueId}` }
+        });
+    });
+
+    test('Create activity is only queued for new posts, not existing', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `existing-post-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Clear outbound activities
+        await request.post('/api/clear-outbound-activities');
+        
+        // Add a follower
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/existing-follower-${uniqueId}`,
+                actor_url: `https://example.com/users/existing-follower-${uniqueId}`,
+                inbox_url: `https://example.com/users/existing-follower-${uniqueId}/inbox`
+            }
+        });
+        
+        // Create initial post
+        fs.writeFileSync(postFile, `<!--
+title: Existing Post ${uniqueId}
+tags: test
+-->
+<article><p>Original content</p></article>`);
+        
+        // First sync - should create post and queue Create activity
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Wait for first sync
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Existing Post ${uniqueId}`, { timeout: 10000 });
+        
+        // Clear outbound activities again
+        await request.post('/api/clear-outbound-activities');
+        
+        // Sync the same post again without changes
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Check outbound activities - should have Update, not Create
+        const outboundResponse = await request.get('/api/outbound-activities');
+        const outboundData = await outboundResponse.json();
+        
+        // Should have an Update activity, not Create
+        const updateActivity = outboundData.activities.find(a => a.type === 'Update');
+        expect(updateActivity).toBeDefined();
+        
+        const createActivity = outboundData.activities.find(a => a.type === 'Create');
+        expect(createActivity).toBeUndefined();
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+        
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/existing-follower-${uniqueId}` }
+        });
+    });
+
+    test('editing a post queues Update activity for federation', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `federation-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const followerInbox = `https://example.com/users/follower-${uniqueId}/inbox`;
+        
+        // Add a follower to the database first
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/follower-${uniqueId}`,
+                actor_url: `https://example.com/users/follower-${uniqueId}`,
+                inbox_url: followerInbox
+            }
+        });
+        
+        // Create initial post
+        const originalTitle = `Federation Test Original ${uniqueId}`;
+        fs.writeFileSync(postFile, `<!--
+title: ${originalTitle}
+tags: test, federation
+-->
+<article><p>Original content for federation test</p></article>`);
+        
+        // Sync the post (this creates it, should not queue Update)
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify original post exists
+        await page.goto(`/p/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(originalTitle, { timeout: 10000 });
+        
+        // Edit the post file
+        const updatedTitle = `Federation Test Updated ${uniqueId}`;
+        const updatedContent = '<p>Updated content for federation test with new information</p>';
+        fs.writeFileSync(postFile, `<!--
+title: ${updatedTitle}
+tags: test, federation, updated
+-->
+<article>${updatedContent}</article>`);
+        
+        // Sync the updated post (this is an edit, should queue Update activity)
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify the post was updated on the site
+        await page.reload();
+        await expect(page.locator('.post-title')).toContainText(updatedTitle);
+        await expect(page.locator('.post-content')).toContainText('Updated content for federation test');
+        
+        // Verify Update activity was queued in outbound_activities table
+        const outboundResponse = await request.get('/api/outbound-activities');
+        expect(outboundResponse.status()).toBe(200);
+        const outboundData = await outboundResponse.json();
+        
+        // Find the Update activity for this post
+        const updateActivity = outboundData.activities.find(a => 
+            a.type === 'Update' && 
+            a.object && 
+            a.object.includes(postSlug)
+        );
+        
+        expect(updateActivity, 'Update activity should be queued for federation').toBeDefined();
+        expect(updateActivity.type).toBe('Update');
+        expect(updateActivity.recipients).toContain(followerInbox);
+        
+        // Verify the activity contains the correct article data
+        const activityObject = JSON.parse(updateActivity.object);
+        expect(activityObject.name).toBe(updatedTitle);
+        expect(activityObject.content).toContain('Updated content for federation test');
+        expect(activityObject.type).toBe('Article');
+        expect(activityObject.id).toContain(postSlug);
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+        
+        // Remove the follower
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/follower-${uniqueId}` }
+        });
+    });
+
+    test('Update activity includes updated timestamp', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `timestamp-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Add a follower
+        await request.post('/api/add-follower', {
+            data: {
+                actor_id: `https://example.com/users/timestamp-follower-${uniqueId}`,
+                actor_url: `https://example.com/users/timestamp-follower-${uniqueId}`,
+                inbox_url: `https://example.com/users/timestamp-follower-${uniqueId}/inbox`
+            }
+        });
+        
+        // Create initial post
+        fs.writeFileSync(postFile, `<!--
+title: Timestamp Test ${uniqueId}
+tags: test
+-->
+<article><p>Original</p></article>`);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Wait a moment to ensure different timestamps
+        await page.waitForTimeout(100);
+        
+        // Edit the post
+        fs.writeFileSync(postFile, `<!--
+title: Timestamp Test Updated ${uniqueId}
+tags: test
+-->
+<article><p>Updated with timestamp</p></article>`);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Get the outbound activity
+        const outboundResponse = await request.get('/api/outbound-activities');
+        const outboundData = await outboundResponse.json();
+        
+        const updateActivity = outboundData.activities.find(a => 
+            a.type === 'Update' && 
+            a.object && 
+            a.object.includes(postSlug)
+        );
+        
+        expect(updateActivity).toBeDefined();
+        
+        const activityObject = JSON.parse(updateActivity.object);
+        expect(activityObject.updated).toBeDefined();
+        expect(activityObject.published).toBeDefined();
+        expect(new Date(activityObject.updated).getTime()).toBeGreaterThanOrEqual(new Date(activityObject.published).getTime());
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+        
+        await request.post('/api/remove-follower', {
+            data: { actor_id: `https://example.com/users/timestamp-follower-${uniqueId}` }
+        });
+    });
 });

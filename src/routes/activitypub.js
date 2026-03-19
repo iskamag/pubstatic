@@ -379,4 +379,234 @@ router.get('/u/:username/following', (req, res) => {
     });
 });
 
+// HTTP Signature functions for outbound federation
+function generateHttpSignature(requestTarget, headers, privateKey) {
+    const now = new Date().toUTCString();
+    const digest = crypto.createHash('sha256').update(headers.body || '').digest('base64');
+    
+    const signatureParts = [
+        `(request-target): ${requestTarget}`,
+        `host: ${headers.host}`,
+        `date: ${now}`,
+        `digest: SHA-256=${digest}`
+    ];
+    
+    const signingString = signatureParts.join('\n');
+    const signer = crypto.createSign('rsa-sha256');
+    signer.update(signingString);
+    const signature = signer.sign(privateKey, 'base64');
+    
+    return {
+        signature: signature,
+        date: now,
+        digest: digest
+    };
+}
+
+function signRequest(url, method, body, privateKey, keyId) {
+    const urlObj = new URL(url);
+    const requestTarget = `${method.toLowerCase()} ${urlObj.pathname}`;
+    
+    const sigData = generateHttpSignature(requestTarget, {
+        host: urlObj.host,
+        body: body ? JSON.stringify(body) : ''
+    }, privateKey);
+    
+    const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="${sigData.signature}"`;
+    
+    return {
+        'Date': sigData.date,
+        'Digest': `SHA-256=${sigData.digest}`,
+        'Signature': signatureHeader,
+        'Content-Type': 'application/activity+json',
+        'Accept': 'application/activity+json'
+    };
+}
+
+// Get followers for federation
+function getFollowers() {
+    const stmt = db.prepare('SELECT actor_id, actor_url, inbox_url FROM followers');
+    return stmt.all();
+}
+
+// Queue an outbound activity for delivery
+function queueOutboundActivity(type, object, recipients = null) {
+    const activityId = `${BASE_URL}/activities/${Date.now()}`;
+    const now = new Date().toISOString();
+    
+    // If no recipients specified, get all followers
+    let targetRecipients = recipients;
+    if (!targetRecipients) {
+        const followers = getFollowers();
+        targetRecipients = followers.map(f => f.inbox_url);
+    }
+    
+    if (targetRecipients.length === 0) {
+        console.log(`[ActivityPub] No recipients for ${type} activity, skipping queue`);
+        return null;
+    }
+    
+    const activity = {
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: activityId,
+        type: type,
+        actor: ACTOR_URL,
+        object: object,
+        published: now
+    };
+    
+    const stmt = db.prepare(`
+        INSERT INTO outbound_activities (activity_id, type, actor, object, recipients, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+        activityId,
+        type,
+        ACTOR_URL,
+        JSON.stringify(object),
+        JSON.stringify(targetRecipients),
+        now
+    );
+    
+    console.log(`[ActivityPub] Queued ${type} activity ${activityId} for ${targetRecipients.length} recipients`);
+    return activityId;
+}
+
+// Deliver a single activity to an inbox
+async function deliverToInbox(inboxUrl, activity, privateKey, keyId) {
+    const body = JSON.stringify(activity);
+    const headers = signRequest(inboxUrl, 'POST', body, privateKey, keyId);
+    
+    try {
+        const response = await fetch(inboxUrl, {
+            method: 'POST',
+            headers: headers,
+            body: body
+        });
+        
+        if (response.ok) {
+            console.log(`[ActivityPub] Delivered to ${inboxUrl}: ${response.status}`);
+            return { success: true, status: response.status };
+        } else {
+            const errorText = await response.text();
+            console.error(`[ActivityPub] Failed to deliver to ${inboxUrl}: ${response.status} ${errorText}`);
+            return { success: false, status: response.status, error: errorText };
+        }
+    } catch (err) {
+        console.error(`[ActivityPub] Error delivering to ${inboxUrl}:`, err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+// Process and deliver queued outbound activities
+async function processOutboundActivities() {
+    const stmt = db.prepare(`
+        SELECT * FROM outbound_activities 
+        WHERE delivered_at IS NULL AND delivery_attempts < 5
+        ORDER BY created_at ASC
+        LIMIT 10
+    `);
+    
+    const pending = stmt.all();
+    const keyId = `${ACTOR_URL}#main-key`;
+    
+    for (const activity of pending) {
+        const recipients = JSON.parse(activity.recipients);
+        const activityData = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: activity.activity_id,
+            type: activity.type,
+            actor: activity.actor,
+            object: JSON.parse(activity.object),
+            published: activity.created_at
+        };
+        
+        let deliveredCount = 0;
+        let lastError = null;
+        
+        for (const inboxUrl of recipients) {
+            const result = await deliverToInbox(inboxUrl, activityData, keys.privateKey, keyId);
+            if (result.success) {
+                deliveredCount++;
+            } else {
+                lastError = result.error || `HTTP ${result.status}`;
+            }
+        }
+        
+        // Update activity record
+        const updateStmt = db.prepare(`
+            UPDATE outbound_activities 
+            SET delivery_attempts = delivery_attempts + 1,
+                last_error = ?,
+                delivered_at = CASE WHEN ? = ? THEN ? ELSE NULL END
+            WHERE id = ?
+        `);
+        
+        const now = new Date().toISOString();
+        const allDelivered = deliveredCount === recipients.length;
+        updateStmt.run(
+            lastError,
+            deliveredCount,
+            recipients.length,
+            allDelivered ? now : null,
+            activity.id
+        );
+        
+        console.log(`[ActivityPub] Processed ${activity.type} to ${deliveredCount}/${recipients.length} recipients`);
+    }
+}
+
+// Queue an Update activity for a post
+function queuePostUpdate(post) {
+    const article = {
+        id: `${BASE_URL}/p/${post.slug}`,
+        type: 'Article',
+        attributedTo: ACTOR_URL,
+        content: post.content,
+        name: post.title,
+        published: post.published_at,
+        updated: post.updated_at,
+        url: `${BASE_URL}/p/${post.slug}`,
+        tag: post.tags.map(tag => ({
+            type: 'Hashtag',
+            name: `#${tag}`,
+            href: `${BASE_URL}/tag/${tag}`
+        }))
+    };
+    
+    return queueOutboundActivity('Update', article);
+}
+
+// Queue a Create activity for a new post
+function queuePostCreate(post) {
+    const article = {
+        id: `${BASE_URL}/p/${post.slug}`,
+        type: 'Article',
+        attributedTo: ACTOR_URL,
+        content: post.content,
+        name: post.title,
+        published: post.published_at,
+        url: `${BASE_URL}/p/${post.slug}`,
+        tag: post.tags.map(tag => ({
+            type: 'Hashtag',
+            name: `#${tag}`,
+            href: `${BASE_URL}/tag/${tag}`
+        }))
+    };
+    
+    return queueOutboundActivity('Create', article);
+}
+
+// Start background delivery processor (every 60 seconds)
+setInterval(() => {
+    processOutboundActivities().catch(err => {
+        console.error('[ActivityPub] Error processing outbound activities:', err.message);
+    });
+}, 60000);
+
 module.exports = router;
+module.exports.queueOutboundActivity = queueOutboundActivity;
+module.exports.queuePostUpdate = queuePostUpdate;
+module.exports.queuePostCreate = queuePostCreate;
+module.exports.processOutboundActivities = processOutboundActivities;
