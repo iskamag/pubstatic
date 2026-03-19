@@ -4,3 +4,4 @@ data/*
 test-results/
 package-lock.json
 .env
+public/feed.rss
