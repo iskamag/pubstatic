@@ -295,12 +295,20 @@ main {
 }
 
 .post-content ul, .post-content ol {
-    margin-bottom: var(--spacing-md);
+    margin-bottom: 0;
     padding-left: var(--spacing-md);
 }
 
 .post-content li {
-    margin-bottom: var(--spacing-xs);
+    margin-bottom: calc(var(--spacing-xs) / 2);
+}
+
+.post-content ul ul li {
+    margin-bottom: calc(var(--spacing-xs) / 3);
+}
+
+#table-of-contents {
+    margin-bottom: var(--spacing-md);
 }
 
 .post-content blockquote {
@@ -429,10 +437,23 @@ main {
 }
 
 .comment {
-    padding: var(--spacing-md);
+    padding: var(--spacing-sm);
     background: var(--bg-primary);
     border-radius: var(--radius-md);
-    border-left: 3px solid var(--accent-teal);
+}
+
+.comment-reply {
+    background: #f0eeea;
+    border-radius: 0;
+    border: 1px solid #ccc;
+    padding: calc(var(--spacing-sm) * 0.75);
+}
+
+.comment-reply .comment-reply {
+    background: #e5e5e3;
+    border-radius: 0;
+    border: 1px solid #bbb;
+    padding: calc(var(--spacing-sm) * 0.5);
 }
 
 .comment-header {
