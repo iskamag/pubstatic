@@ -7,14 +7,14 @@
     --text-secondary: #666666;
     --text-muted: #999999;
     
-    --accent-pink: #ff6b9d;
-    --accent-purple: #c084fc;
-    --accent-blue: #60a5fa;
-    --accent-teal: #2dd4bf;
-    --accent-orange: #fb923c;
-    --accent-yellow: #facc15;
+    --accent-pink: #e0859a;
+    --accent-green: #7ca428;
+    --accent-blue: #5a9fd4;
+    --accent-teal: #4db6a0;
+    --accent-orange: #e5984a;
+    --accent-yellow: #d4b43a;
     
-    --gradient-1: linear-gradient(135deg, #ff6b9d 0%, #c084fc 100%);
+    --gradient-1: linear-gradient(90deg, #7ca428 0%, #9db838 60%, #c4c848 100%);
     --gradient-2: linear-gradient(135deg, #60a5fa 0%, #2dd4bf 100%);
     --gradient-3: linear-gradient(135deg, #fb923c 0%, #facc15 100%);
     
@@ -96,7 +96,7 @@ body {
 /* Main Content */
 main {
     flex: 1;
-    padding-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
 }
 
@@ -137,22 +137,22 @@ main {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     font-size: 0.875rem;
-    color: var(--accent-purple);
+    color: var(--accent-green);
     text-decoration: none;
     transition: all 0.2s ease;
 }
 
 .tag:hover {
-    background: var(--accent-purple);
+    background: var(--accent-green);
     color: white;
-    border-color: var(--accent-purple);
+    border-color: var(--accent-green);
     transform: translateY(-1px);
 }
 
 .tag.active {
-    background: var(--accent-purple);
+    background: var(--accent-green);
     color: white;
-    border-color: var(--accent-purple);
+    border-color: var(--accent-green);
 }
 
 /* Posts List */
@@ -160,7 +160,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-xl);
+    margin-bottom: var(--spacing-md);
 }
 
 .post-card {
@@ -276,7 +276,7 @@ main {
     font-size: 1.375rem;
     font-weight: 600;
     margin: var(--spacing-md) 0 var(--spacing-xs);
-    color: var(--accent-purple);
+    color: var(--accent-green);
 }
 
 .post-content p {
@@ -485,7 +485,7 @@ main {
 }
 
 .back-link:hover {
-    color: var(--accent-purple);
+    color: var(--accent-green);
 }
 
 /* Empty State */
@@ -542,7 +542,7 @@ main {
 }
 
 .site-footer a {
-    color: var(--accent-purple);
+    color: var(--accent-green);
     text-decoration: none;
 }
 

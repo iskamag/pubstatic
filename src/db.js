@@ -41,13 +41,15 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         post_id INTEGER NOT NULL,
+        parent_id INTEGER,
         actor_id TEXT NOT NULL,
         actor_url TEXT,
         actor_name TEXT,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
         activity_id TEXT UNIQUE,
-        FOREIGN KEY (post_id) REFERENCES posts(id)
+        FOREIGN KEY (post_id) REFERENCES posts(id),
+        FOREIGN KEY (parent_id) REFERENCES comments(id)
     );
 
     CREATE TABLE IF NOT EXISTS shares (
@@ -72,5 +74,16 @@ db.exec(`
         processed BOOLEAN DEFAULT 0
     );
 `);
+
+// Migration: Add parent_id column to existing comments table
+try {
+    db.exec(`ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)`);
+    console.log('[DB] Migration: Added parent_id column to comments table');
+} catch (err) {
+    // Column already exists, ignore error
+    if (!err.message.includes('duplicate column')) {
+        console.error('[DB] Migration error:', err.message);
+    }
+}
 
 module.exports = db;

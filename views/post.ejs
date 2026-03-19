@@ -47,28 +47,49 @@
     </footer>
 </article>
 
+<%
+function countAllComments(commentList) {
+    let count = 0;
+    commentList.forEach(comment => {
+        count += 1;
+        if (comment.replies && comment.replies.length > 0) {
+            count += countAllComments(comment.replies);
+        }
+    });
+    return count;
+}
+
+function renderComment(comment, depth = 0) {
+%>
+    <article class="comment<%= depth > 0 ? ' comment-reply' : '' %>" data-depth="<%= depth %>">
+        <header class="comment-header">
+            <a href="<%= comment.actor_url %>" class="comment-author" target="_blank" rel="noopener">
+                <%= comment.actor_name %>
+            </a>
+            <time datetime="<%= comment.created_at %>">
+                <%= new Date(comment.created_at).toLocaleDateString() %>
+            </time>
+        </header>
+        <div class="comment-content">
+            <%- comment.content %>
+        </div>
+        <% if (comment.replies && comment.replies.length > 0) { %>
+        <div class="comment-replies">
+            <% comment.replies.forEach(reply => { renderComment(reply, depth + 1); }); %>
+        </div>
+        <% } %>
+    </article>
+<% }
+%>
+
 <section class="comments-section">
-    <h2>Comments (<%= comments.length %>)</h2>
+    <h2>Comments (<%= comments ? countAllComments(comments) : 0 %>)</h2>
     
-    <% if (comments.length === 0) { %>
+    <% if (!comments || comments.length === 0) { %>
         <p class="no-comments">No comments yet. Reply from your ActivityPub instance!</p>
     <% } else { %>
         <div class="comments-list">
-            <% comments.forEach(comment => { %>
-            <article class="comment">
-                <header class="comment-header">
-                    <a href="<%= comment.actor_url %>" class="comment-author" target="_blank" rel="noopener">
-                        <%= comment.actor_name %>
-                    </a>
-                    <time datetime="<%= comment.created_at %>">
-                        <%= new Date(comment.created_at).toLocaleDateString() %>
-                    </time>
-                </header>
-                <div class="comment-content">
-                    <%- comment.content %>
-                </div>
-            </article>
-            <% }); %>
+            <% comments.forEach(comment => { renderComment(comment); }); %>
         </div>
     <% } %>
 </section>

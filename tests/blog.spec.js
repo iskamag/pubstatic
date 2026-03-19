@@ -287,11 +287,13 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         // Check comments section exists
         await expect(page.locator('.comments-section')).toBeVisible();
         
-        // Check the comment content is visible (use first() to avoid strict mode violation)
-        await expect(page.locator('.comment-content').first()).toContainText(commentContent);
+        // Find the specific comment by its content
+        const specificComment = page.locator('.comment', { hasText: commentContent });
+        await expect(specificComment).toBeVisible();
+        await expect(specificComment.locator('.comment-content')).toContainText(commentContent);
         
-        // Check comment author link exists
-        await expect(page.locator('.comment-author').first()).toBeVisible();
+        // Check comment author link exists for this comment
+        await expect(specificComment.locator('.comment-author')).toBeVisible();
     });
 
     test('comment count updates correctly', async ({ page, request }) => {
@@ -416,8 +418,12 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         
         await page.goto('/p/welcome');
         
+        // Find the specific comment by its unique ID
+        const specificComment = page.locator('.comment', { hasText: uniqueId.toString() });
+        await expect(specificComment).toBeVisible();
+        
         // Check that markdown is rendered (has HTML tags)
-        const commentHtml = await page.locator('.comment-content').first().innerHTML();
+        const commentHtml = await specificComment.locator('.comment-content').innerHTML();
         
         // Should contain HTML tags from markdown rendering
         expect(commentHtml).toMatch(/<(strong|b|em|i|code)>/);
@@ -425,7 +431,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
 
     test('XSS attempts in comments are sanitized', async ({ page, request }) => {
         const uniqueId = Date.now();
-        const xssComment = '<script>alert("xss")</script><p>Safe content</p>';
+        const xssComment = `<script>alert("xss-${uniqueId}")</script><p>Safe content ${uniqueId}</p>`;
         
         const activity = {
             '@context': 'https://www.w3.org/ns/activitystreams',
@@ -451,10 +457,241 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         
         // Check that script tags are removed
         const pageContent = await page.content();
-        expect(pageContent).not.toContain('<script>alert("xss")</script>');
+        expect(pageContent).not.toContain(`<script>alert("xss-${uniqueId}")</script>`);
         
-        // But safe content should still be there (use first() to avoid strict mode violation)
-        await expect(page.locator('.comment-content').first()).toContainText('Safe content');
+        // But safe content should still be there - find comment by unique ID
+        const specificComment = page.locator('.comment', { hasText: uniqueId.toString() });
+        await expect(specificComment.locator('.comment-content')).toContainText(`Safe content ${uniqueId}`);
+    });
+
+    test('replies to comments create threaded structure', async ({ page, request }) => {
+        const baseId = Date.now();
+        const parentContent = `Parent comment ${baseId} that will receive replies`;
+        const replyContent = `Reply to parent ${baseId}`;
+        
+        // Create a parent comment
+        const parentActivity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/parent-${baseId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/parent-commenter',
+            object: {
+                id: `https://example.com/notes/parent-${baseId}`,
+                type: 'Note',
+                content: parentContent,
+                inReplyTo: 'http://localhost:6767/p/welcome'
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: parentActivity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Create a reply to the parent comment
+        const replyActivity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/reply-${baseId}`,
+            type: 'Create',
+            actor: 'https://example.com/users/reply-commenter',
+            object: {
+                id: `https://example.com/notes/reply-${baseId}`,
+                type: 'Note',
+                content: replyContent,
+                inReplyTo: `https://example.com/notes/parent-${baseId}`
+            }
+        };
+        
+        await request.post('/u/admin/inbox', {
+            data: replyActivity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        await page.goto('/p/welcome');
+        
+        // Find the parent comment by its unique content
+        const parentComment = page.locator('.comment', { hasText: parentContent });
+        await expect(parentComment).toBeVisible();
+        
+        // Check that replies are nested within the parent's comment-replies container
+        const repliesContainer = parentComment.locator('.comment-replies');
+        await expect(repliesContainer).toBeVisible();
+        
+        // Verify the reply is inside the parent's replies container
+        const replyWithinParent = repliesContainer.locator('.comment-reply');
+        await expect(replyWithinParent).toBeVisible();
+        await expect(replyWithinParent).toContainText(replyContent);
+    });
+
+    test('nested comment threads work correctly', async ({ page, request }) => {
+        const baseId = Date.now();
+        const parentContent = `Nested parent comment ${baseId}`;
+        const reply1Content = `First reply to ${baseId}`;
+        const reply2Content = `Second reply to ${baseId}`;
+        const nestedReplyContent = `Nested reply under ${baseId}`;
+        
+        // Create parent comment
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/nested-parent-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/parent',
+                object: {
+                    id: `https://example.com/notes/nested-parent-${baseId}`,
+                    type: 'Note',
+                    content: parentContent,
+                    inReplyTo: 'http://localhost:6767/p/welcome'
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Create first reply
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/reply1-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/reply1',
+                object: {
+                    id: `https://example.com/notes/reply1-${baseId}`,
+                    type: 'Note',
+                    content: reply1Content,
+                    inReplyTo: `https://example.com/notes/nested-parent-${baseId}`
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Create second reply
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/reply2-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/reply2',
+                object: {
+                    id: `https://example.com/notes/reply2-${baseId}`,
+                    type: 'Note',
+                    content: reply2Content,
+                    inReplyTo: `https://example.com/notes/nested-parent-${baseId}`
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Create a nested reply to the first reply
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/nested-reply-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/nested-reply',
+                object: {
+                    id: `https://example.com/notes/nested-reply-${baseId}`,
+                    type: 'Note',
+                    content: nestedReplyContent,
+                    inReplyTo: `https://example.com/notes/reply1-${baseId}`
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        await page.goto('/p/welcome');
+        
+        // Check comment count increased (parent + 3 new replies)
+        const countText = await page.locator('.comments-section h2').textContent();
+        const match = countText.match(/\((\d+)\)/);
+        const count = match ? parseInt(match[1]) : 0;
+        expect(count).toBeGreaterThanOrEqual(4);
+        
+        // Find the parent comment
+        const parentComment = page.locator('.comment', { hasText: parentContent });
+        await expect(parentComment).toBeVisible();
+        
+        // Check the parent has 2 direct replies (only immediate children, not nested)
+        const parentReplies = parentComment.locator(':scope > .comment-replies > .comment-reply');
+        await expect(parentReplies).toHaveCount(2);
+        
+        // Find the first reply and verify it has a nested reply
+        const firstReply = parentComment.locator('.comment-reply', { hasText: reply1Content });
+        await expect(firstReply).toBeVisible();
+        
+        // The nested reply should be inside the first reply's replies container
+        const nestedReply = firstReply.locator('.comment-replies .comment-reply', { hasText: nestedReplyContent });
+        await expect(nestedReply).toBeVisible();
+    });
+
+    test('comment thread maintains correct author information', async ({ page, request }) => {
+        const baseId = Date.now();
+        const parentContent = `Parent from original author ${baseId}`;
+        const replyContent = `Reply from different author ${baseId}`;
+        
+        // Create parent with specific actor
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/author-parent-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/original-author',
+                object: {
+                    id: `https://example.com/notes/author-parent-${baseId}`,
+                    type: 'Note',
+                    content: parentContent,
+                    inReplyTo: 'http://localhost:6767/p/welcome'
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Create reply with different actor
+        await request.post('/u/admin/inbox', {
+            data: {
+                '@context': 'https://www.w3.org/ns/activitystreams',
+                id: `https://example.com/activities/author-reply-${baseId}`,
+                type: 'Create',
+                actor: 'https://example.com/users/different-author',
+                object: {
+                    id: `https://example.com/notes/author-reply-${baseId}`,
+                    type: 'Note',
+                    content: replyContent,
+                    inReplyTo: `https://example.com/notes/author-parent-${baseId}`
+                }
+            },
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        await page.goto('/p/welcome');
+        
+        // Find the specific parent comment
+        const parentComment = page.locator('.comment', { hasText: parentContent });
+        await expect(parentComment).toBeVisible();
+        // Only get the author link directly from the comment header, not nested replies
+        const parentAuthor = parentComment.locator(':scope > .comment-header > .comment-author');
+        await expect(parentAuthor).toHaveAttribute('href', 'https://example.com/users/original-author');
+        
+        // Find the specific reply comment within the parent's replies
+        const replyComment = parentComment.locator('.comment-replies .comment', { hasText: replyContent });
+        await expect(replyComment).toBeVisible();
+        const replyAuthor = replyComment.locator('.comment-author');
+        await expect(replyAuthor).toHaveAttribute('href', 'https://example.com/users/different-author');
     });
 });
 

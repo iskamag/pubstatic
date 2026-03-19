@@ -111,9 +111,40 @@ class Posts {
         const stmt = db.prepare(`
             SELECT * FROM comments 
             WHERE post_id = ? 
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
         `);
-        return stmt.all(postId);
+        const comments = stmt.all(postId);
+        
+        // Organize into threaded structure
+        const commentMap = new Map();
+        const rootComments = [];
+        
+        // First pass: create map and identify roots
+        comments.forEach(comment => {
+            comment.replies = [];
+            commentMap.set(comment.id, comment);
+            if (!comment.parent_id) {
+                rootComments.push(comment);
+            }
+        });
+        
+        // Second pass: organize into tree
+        comments.forEach(comment => {
+            if (comment.parent_id && commentMap.has(comment.parent_id)) {
+                const parent = commentMap.get(comment.parent_id);
+                parent.replies.push(comment);
+            }
+        });
+        
+        return rootComments;
+    }
+
+    static getCommentsCount(postId) {
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count FROM comments 
+            WHERE post_id = ?
+        `);
+        return stmt.get(postId).count;
     }
 
     static getLikes(postId) {

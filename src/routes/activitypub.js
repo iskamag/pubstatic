@@ -258,12 +258,47 @@ async function handleComment(activity) {
     if (!note.inReplyTo) return;
     
     const escapedBaseUrl = escapeRegex(BASE_URL);
-    const match = note.inReplyTo.match(new RegExp(`${escapedBaseUrl}/p/(.+)$`));
-    if (!match) return;
+    let postId = null;
+    let parentId = null;
     
-    const slug = match[1];
-    const post = Posts.getBySlug(slug);
-    if (!post) return;
+    // Check if replying to a post
+    const postMatch = note.inReplyTo.match(new RegExp(`${escapedBaseUrl}/p/(.+)$`));
+    if (postMatch) {
+        const slug = postMatch[1];
+        const post = Posts.getBySlug(slug);
+        if (!post) return;
+        postId = post.id;
+    } else {
+        // Check if replying to a comment (using activity URL pattern)
+        const commentMatch = note.inReplyTo.match(/\/notes\/(.+)$/);
+        if (commentMatch) {
+            // Find the parent comment by activity_id
+            const findParentStmt = db.prepare(`
+                SELECT id, post_id FROM comments WHERE activity_id = ? OR activity_id LIKE ?
+            `);
+            const parentComment = findParentStmt.get(
+                note.inReplyTo,
+                `%${commentMatch[1]}%`
+            );
+            
+            if (parentComment) {
+                postId = parentComment.post_id;
+                parentId = parentComment.id;
+            } else {
+                // Try to find by looking for comments from external instances
+                const findByUrlStmt = db.prepare(`
+                    SELECT id, post_id FROM comments WHERE actor_url LIKE ? OR content LIKE ?
+                `);
+                const byUrl = findByUrlStmt.get(`%${note.inReplyTo}%`, `%${note.inReplyTo}%`);
+                if (byUrl) {
+                    postId = byUrl.post_id;
+                    parentId = byUrl.id;
+                }
+            }
+        }
+    }
+    
+    if (!postId) return;
     
     const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
     
@@ -286,11 +321,11 @@ async function handleComment(activity) {
     
     try {
         const stmt = db.prepare(`
-            INSERT INTO comments (post_id, actor_id, actor_url, actor_name, content, created_at, activity_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO comments (post_id, parent_id, actor_id, actor_url, actor_name, content, created_at, activity_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(post.id, actorId, actorId, actorName, htmlContent, new Date().toISOString(), activity.id);
-        console.log(`[ActivityPub] Added comment from ${actorName} on ${slug}`);
+        stmt.run(postId, parentId, actorId, actorId, actorName, htmlContent, new Date().toISOString(), activity.id);
+        console.log(`[ActivityPub] Added comment from ${actorName} on post ${postId}${parentId ? ` (reply to comment ${parentId})` : ''}`);
     } catch (err) {
         console.error('[ActivityPub] Error handling comment:', err.message);
     }
