@@ -1,7 +1,7 @@
 {
-  "name": "apub-blog",
-  "version": "1.0.0",
-  "description": "A minimalist ActivityPub-enabled blog with zero JavaScript frontend",
+  "name": "pubstatic",
+  "version": "0.1.0",
+  "description": "Integrate an ActivityPub blog into your pure-html website.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -13,8 +13,7 @@
   "keywords": [
     "activitypub",
     "blog",
-    "fediverse",
-    "minimalist"
+    "fediverse"
   ],
   "author": "",
   "license": "MIT",
