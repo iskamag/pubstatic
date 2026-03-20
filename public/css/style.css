@@ -445,14 +445,12 @@ main {
 .comment-reply {
     background: #f0eeea;
     border-radius: 0;
-    border: 1px solid #ccc;
     padding: calc(var(--spacing-sm) * 0.75);
 }
 
 .comment-reply .comment-reply {
     background: #e5e5e3;
     border-radius: 0;
-    border: 1px solid #bbb;
     padding: calc(var(--spacing-sm) * 0.5);
 }
 
