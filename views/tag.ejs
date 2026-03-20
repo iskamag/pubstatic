@@ -3,7 +3,7 @@
     <nav class="tags-nav">
         <span class="tags-label">All tags:</span>
         <% tags.forEach(tag => { %>
-        <a href="/tag/<%= tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
+        <a href="<%= tag === currentTag ? '/' : '/tag/' + tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
         <% }); %>
     </nav>
 </section>
@@ -30,7 +30,7 @@
             <% if (post.tags.length > 0) { %>
             <div class="post-tags">
                 <% post.tags.forEach(tag => { %>
-                <a href="/tag/<%= tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
+                <a href="<%= tag === currentTag ? '/' : '/tag/' + tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
                 <% }); %>
             </div>
             <% } %>
