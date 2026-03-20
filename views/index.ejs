@@ -18,9 +18,9 @@
 <% } else { %>
     <div class="posts-list">
         <% posts.forEach(post => { %>
-        <article class="post-card">
+        <article class="post-card" id="post-<%= post.id %>">
             <h2 class="post-title">
-                <a href="/p/<%= post.slug %>"><%= post.title %></a>
+                <a href="/p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
             </h2>
             <time class="post-date" datetime="<%= post.published_at %>">
                 <%= new Date(post.published_at).toLocaleDateString('en-US', { 

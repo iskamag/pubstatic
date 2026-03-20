@@ -440,6 +440,7 @@ main {
     padding: var(--spacing-sm);
     background: var(--bg-primary);
     border-radius: var(--radius-md);
+    position: relative;
 }
 
 .comment-reply {
@@ -472,6 +473,14 @@ main {
 }
 
 .comment-header time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.comment-date {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
     font-size: 0.75rem;
     color: var(--text-muted);
 }
@@ -602,4 +611,24 @@ main {
         align-items: flex-start;
         gap: var(--spacing-xs);
     }
+}
+
+/* Post and Comment IDs */
+.post-id {
+    font-family: monospace;
+    font-size: 0.875rem;
+    color: #bbbbbb;
+    margin-left: 0.5rem;
+    display: inline;
+    font-weight: normal;
+}
+
+.comment-id {
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: #bbbbbb;
+    font-weight: normal;
+    position: absolute;
+    bottom: var(--spacing-sm);
+    right: var(--spacing-sm);
 }

@@ -1,6 +1,6 @@
-<article class="post-full">
+<article class="post-full" id="post-<%= post.id %>">
     <header class="post-header">
-        <h1 class="post-title"><%= post.title %></h1>
+        <h1 class="post-title"><%= post.title %><span class="post-id">#<%= post.id %></span></h1>
         <div class="post-meta">
             <time datetime="<%= post.published_at %>">
                 <%= new Date(post.published_at).toLocaleDateString('en-US', { 
@@ -61,18 +61,19 @@ function countAllComments(commentList) {
 
 function renderComment(comment, depth = 0) {
 %>
-    <article class="comment<%= depth > 0 ? ' comment-reply' : '' %>" data-depth="<%= depth %>">
+    <article class="comment<%= depth > 0 ? ' comment-reply' : '' %>" data-depth="<%= depth %>" id="comment-<%= comment.id %>">
+        <time class="comment-date" datetime="<%= comment.created_at %>">
+            <%= new Date(comment.created_at).toLocaleDateString() %>
+        </time>
         <header class="comment-header">
             <a href="<%= comment.actor_url %>" class="comment-author" target="_blank" rel="noopener">
                 <%= comment.actor_name %>
             </a>
-            <time datetime="<%= comment.created_at %>">
-                <%= new Date(comment.created_at).toLocaleDateString() %>
-            </time>
         </header>
         <div class="comment-content">
             <%- comment.content %>
         </div>
+        <span class="comment-id">#<%= comment.id %></span>
         <% if (comment.replies && comment.replies.length > 0) { %>
         <div class="comment-replies">
             <% comment.replies.forEach(reply => { renderComment(reply, depth + 1); }); %>
