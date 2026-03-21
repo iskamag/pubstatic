@@ -487,6 +487,8 @@ main {
 
 .comment-content {
     color: var(--text-secondary);
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .comment-content p {
@@ -495,6 +497,57 @@ main {
 
 .comment-content p:last-child {
     margin-bottom: 0;
+}
+
+/* ActivityPub media in comments */
+.comment-content img,
+.comment-content video,
+.comment-content audio {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: var(--spacing-sm) 0;
+    border-radius: var(--radius-sm);
+}
+
+.comment-content video {
+    max-height: 400px;
+    background: #000;
+}
+
+.comment-content img {
+    max-height: 500px;
+    object-fit: contain;
+}
+
+.comment-content audio {
+    width: 100%;
+    max-width: 300px;
+}
+
+.ap-image,
+.ap-video,
+.ap-audio {
+    max-width: 100%;
+    display: block;
+    margin: var(--spacing-sm) 0;
+}
+
+.ap-image {
+    max-height: 500px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+.ap-video {
+    max-height: 400px;
+    background: #000;
+    border-radius: var(--radius-sm);
+}
+
+.ap-audio {
+    width: 100%;
+    max-width: 300px;
 }
 
 /* Navigation */
