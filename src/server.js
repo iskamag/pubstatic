@@ -256,6 +256,11 @@ app.get('/p/:slug', (req, res) => {
     const post = Posts.getBySlug(req.params.slug);
     
     if (!post) {
+        // Check if request wants ActivityPub JSON
+        const accept = req.headers.accept || '';
+        if (accept.includes('application/activity+json') || accept.includes('application/ld+json')) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
         return res.status(404).render('404', {
             title: 'Not Found',
             baseUrl: BASE_URL,
@@ -263,6 +268,37 @@ app.get('/p/:slug', (req, res) => {
         });
     }
     
+    // Check if request wants ActivityPub JSON
+    const accept = req.headers.accept || '';
+    if (accept.includes('application/activity+json') || accept.includes('application/ld+json')) {
+        // Return ActivityPub JSON representation
+        const article = {
+            '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
+            id: `${BASE_URL}/p/${post.slug}`,
+            type: 'Article',
+            attributedTo: ACTOR_URL,
+            name: post.title,
+            content: post.content,
+            published: post.published_at,
+            updated: post.updated_at,
+            url: `${BASE_URL}/p/${post.slug}`,
+            tag: post.tags.map(tag => ({
+                type: 'Hashtag',
+                name: `#${tag}`,
+                href: `${BASE_URL}/tag/${tag}`
+            })),
+            replies: {
+                id: `${BASE_URL}/p/${post.slug}/replies`,
+                type: 'Collection',
+                totalItems: post.comments_count || 0
+            }
+        };
+        
+        res.set('Content-Type', 'application/activity+json');
+        return res.json(article);
+    }
+    
+    // Return HTML page
     const comments = Posts.getComments(post.id);
     const likes = Posts.getLikes(post.id);
     const shares = Posts.getShares(post.id);
