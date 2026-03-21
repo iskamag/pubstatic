@@ -10,6 +10,21 @@ const db = require('./db');
 
 const app = express();
 
+// Log ALL requests BEFORE any middleware - this catches everything
+app.use((req, res, next) => {
+    console.log('\n[Server] ========== REQUEST START ==========');
+    console.log('[Server] Time:', new Date().toISOString());
+    console.log('[Server] Method:', req.method);
+    console.log('[Server] URL:', req.originalUrl);
+    console.log('[Server] Path:', req.path);
+    console.log('[Server] Host:', req.get('Host'));
+    console.log('[Server] Content-Type:', req.get('Content-Type'));
+    console.log('[Server] Content-Length:', req.get('Content-Length'));
+    console.log('[Server] User-Agent:', req.get('User-Agent'));
+    console.log('[Server] =========================================');
+    next();
+});
+
 // Setup view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
@@ -25,26 +40,41 @@ app.use(express.json({
     type: ['application/json', 'application/activity+json', 'application/ld+json', 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"'],
     verify: (req, res, buf) => {
         req.rawBody = buf;
-    }
+    },
+    limit: '10mb'
 }));
 
-// Fallback body parser for any content type
+// Fallback body parser for any JSON-like content type
 app.use(express.json({
+    type: '*/*',
     verify: (req, res, buf) => {
         if (!req.rawBody) {
             req.rawBody = buf;
         }
-    }
+    },
+    limit: '10mb'
 }));
+
+// Error handler for body parsing errors
+app.use((err, req, res, next) => {
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        console.error('[Server] JSON parsing error:', err.message);
+        console.error('[Server] Raw body attempt:', req.rawBody ? req.rawBody.toString().substring(0, 200) : 'none');
+        return res.status(400).json({ error: 'Invalid JSON' });
+    }
+    next(err);
+});
 
 // Log ALL incoming requests for debugging
 app.use((req, res, next) => {
     if (req.path.includes('/inbox') || req.path.includes('/outbox')) {
-        console.log('\n[Server] === REQUEST INTERCEPTED ===');
+        console.log('\n[Server] === ACTIVITYPUB REQUEST ===');
         console.log('[Server] Method:', req.method);
         console.log('[Server] URL:', req.originalUrl);
         console.log('[Server] Content-Type:', req.get('Content-Type'));
         console.log('[Server] Content-Length:', req.get('Content-Length'));
+        console.log('[Server] Has rawBody:', !!req.rawBody);
+        console.log('[Server] Body parsed:', typeof req.body);
     }
     next();
 });
