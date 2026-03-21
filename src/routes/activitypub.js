@@ -167,6 +167,16 @@ router.get('/u/:username/outbox', (req, res) => {
             url: `${BASE_URL}/p/${post.slug}`,
             to: ['https://www.w3.org/ns/activitystreams#Public'],
             cc: [USER.followers],
+            likes: {
+                id: `${BASE_URL}/p/${post.slug}/likes`,
+                type: 'OrderedCollection',
+                totalItems: post.likes_count || 0
+            },
+            shares: {
+                id: `${BASE_URL}/p/${post.slug}/shares`,
+                type: 'OrderedCollection',
+                totalItems: post.shares_count || 0
+            },
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
@@ -438,7 +448,13 @@ async function handleFollow(activity) {
             id: `${BASE_URL}/activities/${Date.now()}`,
             type: 'Accept',
             actor: ACTOR_URL,
-            object: activity.id
+            to: [actorId],
+            object: {
+                type: 'Follow',
+                id: activity.id,
+                actor: actorId,
+                object: ACTOR_URL
+            }
         };
         
         const body = JSON.stringify(acceptActivity);
@@ -500,6 +516,60 @@ router.get('/u/:username/following', (req, res) => {
         type: 'OrderedCollection',
         totalItems: 0,
         orderedItems: []
+    });
+});
+
+// Likes collection endpoint for posts
+router.get('/p/:slug/likes', (req, res) => {
+    const post = Posts.getBySlug(req.params.slug);
+    
+    if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+    }
+    
+    const likes = Posts.getLikes(post.id);
+    const orderedItems = likes.map(like => ({
+        type: 'Like',
+        id: like.activity_id || `${BASE_URL}/p/${post.slug}/likes/${like.id}`,
+        actor: like.actor_url || like.actor_id,
+        object: `${BASE_URL}/p/${post.slug}`,
+        published: like.created_at
+    }));
+    
+    res.set('Content-Type', 'application/activity+json');
+    res.json({
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: `${BASE_URL}/p/${post.slug}/likes`,
+        type: 'OrderedCollection',
+        totalItems: likes.length,
+        orderedItems
+    });
+});
+
+// Shares collection endpoint for posts
+router.get('/p/:slug/shares', (req, res) => {
+    const post = Posts.getBySlug(req.params.slug);
+    
+    if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+    }
+    
+    const shares = Posts.getShares(post.id);
+    const orderedItems = shares.map(share => ({
+        type: 'Announce',
+        id: share.activity_id || `${BASE_URL}/p/${post.slug}/shares/${share.id}`,
+        actor: share.actor_url || share.actor_id,
+        object: `${BASE_URL}/p/${post.slug}`,
+        published: share.created_at
+    }));
+    
+    res.set('Content-Type', 'application/activity+json');
+    res.json({
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: `${BASE_URL}/p/${post.slug}/shares`,
+        type: 'OrderedCollection',
+        totalItems: shares.length,
+        orderedItems
     });
 });
 
@@ -857,6 +927,16 @@ function queuePostUpdate(post) {
         url: `${BASE_URL}/p/${post.slug}`,
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
+        likes: {
+            id: `${BASE_URL}/p/${post.slug}/likes`,
+            type: 'OrderedCollection',
+            totalItems: post.likes_count || 0
+        },
+        shares: {
+            id: `${BASE_URL}/p/${post.slug}/shares`,
+            type: 'OrderedCollection',
+            totalItems: post.shares_count || 0
+        },
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,
@@ -879,6 +959,16 @@ function queuePostCreate(post) {
         url: `${BASE_URL}/p/${post.slug}`,
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
+        likes: {
+            id: `${BASE_URL}/p/${post.slug}/likes`,
+            type: 'OrderedCollection',
+            totalItems: 0
+        },
+        shares: {
+            id: `${BASE_URL}/p/${post.slug}/shares`,
+            type: 'OrderedCollection',
+            totalItems: 0
+        },
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,

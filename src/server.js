@@ -289,6 +289,16 @@ app.get('/p/:slug', (req, res) => {
                 name: `#${tag}`,
                 href: `${BASE_URL}/tag/${tag}`
             })),
+            likes: {
+                id: `${BASE_URL}/p/${post.slug}/likes`,
+                type: 'OrderedCollection',
+                totalItems: post.likes_count ||0
+            },
+            shares: {
+                id: `${BASE_URL}/p/${post.slug}/shares`,
+                type: 'OrderedCollection',
+                totalItems: post.shares_count || 0
+            },
             replies: {
                 id: `${BASE_URL}/p/${post.slug}/replies`,
                 type: 'Collection',
