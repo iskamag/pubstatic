@@ -154,6 +154,8 @@ router.get('/u/:username/outbox', (req, res) => {
         id: `${BASE_URL}/p/${post.slug}#activity`,
         type: 'Create',
         actor: ACTOR_URL,
+        to: ['https://www.w3.org/ns/activitystreams#Public'],
+        cc: [USER.followers],
         object: {
             id: `${BASE_URL}/p/${post.slug}`,
             type: 'Article',
@@ -163,6 +165,8 @@ router.get('/u/:username/outbox', (req, res) => {
             published: post.published_at,
             updated: post.updated_at,
             url: `${BASE_URL}/p/${post.slug}`,
+            to: ['https://www.w3.org/ns/activitystreams#Public'],
+            cc: [USER.followers],
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
@@ -799,6 +803,8 @@ async function processOutboundActivities() {
             id: activity.activity_id,
             type: activity.type,
             actor: activity.actor,
+            to: ['https://www.w3.org/ns/activitystreams#Public'],
+            cc: [USER.followers],
             object: JSON.parse(activity.object),
             published: activity.created_at
         };
@@ -849,6 +855,8 @@ function queuePostUpdate(post) {
         published: post.published_at,
         updated: post.updated_at,
         url: `${BASE_URL}/p/${post.slug}`,
+        to: ['https://www.w3.org/ns/activitystreams#Public'],
+        cc: [USER.followers],
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,
@@ -869,6 +877,8 @@ function queuePostCreate(post) {
         name: post.title,
         published: post.published_at,
         url: `${BASE_URL}/p/${post.slug}`,
+        to: ['https://www.w3.org/ns/activitystreams#Public'],
+        cc: [USER.followers],
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,

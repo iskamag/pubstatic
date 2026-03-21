@@ -282,6 +282,8 @@ app.get('/p/:slug', (req, res) => {
             published: post.published_at,
             updated: post.updated_at,
             url: `${BASE_URL}/p/${post.slug}`,
+            to: ['https://www.w3.org/ns/activitystreams#Public'],
+            cc: [`${BASE_URL}/u/${USERNAME}/followers`],
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
