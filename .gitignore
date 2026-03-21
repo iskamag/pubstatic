@@ -5,3 +5,4 @@ test-results/
 package-lock.json
 .env
 public/feed.xml
+/.agent-shell/
