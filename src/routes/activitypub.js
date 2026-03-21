@@ -82,17 +82,51 @@ function sanitizeHtml(html) {
 }
 
 // Convert markdown to safe HTML
-function markdownToSafeHtml(markdown) {
-    if (!markdown) return '';
-    // First convert markdown to HTML
-    const rawHtml = marked.parse(markdown);
-    // Then sanitize - but we need to be careful to preserve allowed tags
-    // For now, we'll use a simple approach: only allow basic formatting
-    return rawHtml
+function processActivityPubContent(note) {
+    let content = note.content || note.name || '';
+    
+    // If content looks like markdown (no HTML tags), convert it
+    if (content && !/<[a-z][\s\S]*>/i.test(content)) {
+        content = marked.parse(content);
+    }
+    
+    // Sanitize HTML - remove dangerous elements but allow media
+    content = content
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
         .replace(/on\w+\s*=\s*'[^']*'/gi, '')
         .replace(/javascript:/gi, '');
+    
+    // Process attachments (images, videos, audio)
+    if (note.attachment && Array.isArray(note.attachment)) {
+        for (const attachment of note.attachment) {
+            const url = typeof attachment.url === 'string' ? attachment.url : (attachment.url?.href || attachment.href);
+            if (!url) continue;
+            
+            const mediaType = attachment.mediaType || '';
+            const name = attachment.name || attachment.summary || '';
+            
+            if (attachment.type === 'Image' || mediaType.startsWith('image/') || url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)/i)) {
+                content += `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" class="ap-image">`;
+            } else if (attachment.type === 'Video' || mediaType.startsWith('video/') || url.match(/\.(mp4|webm|ogg|mov)/i)) {
+                content += `<video controls class="ap-video"><source src="${escapeHtml(url)}"></video>`;
+            } else if (attachment.type === 'Audio' || mediaType.startsWith('audio/') || url.match(/\.(mp3|ogg|wav|flac|m4a)/i)) {
+                content += `<audio controls class="ap-audio"><source src="${escapeHtml(url)}"></audio>`;
+            }
+        }
+    }
+    
+    return content;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
 }
 
 // Actor endpoint
@@ -372,7 +406,12 @@ async function handleAnnounce(activity) {
 
 async function handleComment(activity) {
     const note = activity.object;
-    if (!note.inReplyTo) return;
+    if (!note.inReplyTo) {
+        console.log('[ActivityPub] Comment missing inReplyTo, skipping');
+        return;
+    }
+    
+    console.log('[ActivityPub] Processing comment, inReplyTo:', note.inReplyTo);
     
     let postId = null;
     let parentId = null;
@@ -383,78 +422,83 @@ async function handleComment(activity) {
         const slug = postMatch[1];
         const post = Posts.getBySlug(slug);
         if (post) {
+            console.log('[ActivityPub] Comment is reply to post:', slug);
             postId = post.id;
         }
     }
     
-    // If not a post reply, check if replying to a comment
+    // If not a post reply, try to find the parent comment
     if (!postId) {
-        // Check if replying to a comment (using activity URL pattern)
-        const commentMatch = note.inReplyTo.match(/\/notes\/([^\/\?#]+)/) || note.inReplyTo.match(/\/activities\/([^\/\?#]+)/);
-        if (commentMatch) {
-            // Find the parent comment by activity_id
-            const findParentStmt = db.prepare(`
-                SELECT id, post_id FROM comments WHERE activity_id = ? OR activity_id LIKE ?
-            `);
-            const parentComment = findParentStmt.get(
-                note.inReplyTo,
-                `%${commentMatch[1]}%`
-            );
-            
-            if (parentComment) {
-                postId = parentComment.post_id;
-                parentId = parentComment.id;
-            } else {
-                // Try to find by looking for comments from external instances
-                const findByUrlStmt = db.prepare(`
-                    SELECT id, post_id FROM comments WHERE actor_url LIKE ? OR content LIKE ?
-                `);
-                const byUrl = findByUrlStmt.get(`%${note.inReplyTo}%`, `%${note.inReplyTo}%`);
-                if (byUrl) {
-                    postId = byUrl.post_id;
-                    parentId = byUrl.id;
-                }
-            }
-        }
-    }
-    
-    // Also try direct URL match for comment replies
-    if (!postId && note.inReplyTo) {
-        // Check if it's a direct link to another comment on our server
-        // Format: /u/username/statuses/... or similar patterns from other fediverse platforms
-        const urlPatterns = [
-            /\/p\/[^\/]+(?:\/comments?)?\/(\d+)/,  // /p/slug/comment/123
-            /\/statuses\/(\w+)/,                    // Mastodon-style
-            /\/notes\/(\w+)/,                       // Pleroma-style
-            /\/objects\/(\w+)/,                     // ActivityPub objects
-            /\/activities\/(\w+)/,                  // ActivityPub activities
-            /\/@[^\/]+\/(\d+)/,                      // Mastodon-style @user/123
-        ];
+        console.log('[ActivityPub] Checking if reply to existing comment...');
         
-        for (const pattern of urlPatterns) {
-            const urlMatch = note.inReplyTo.match(pattern);
-            if (urlMatch) {
-                const identifier = urlMatch[1];
-                // Try to find by activity_id or stored URL
-                const findByActivityStmt = db.prepare(`
+        // Try exact match on activity_id first
+        let parentComment = db.prepare('SELECT id, post_id FROM comments WHERE activity_id = ?').get(note.inReplyTo);
+        
+        if (parentComment) {
+            console.log('[ActivityPub] Found parent comment by exact activity_id');
+            postId = parentComment.post_id;
+            parentId = parentComment.id;
+        } else {
+            // Try to match by extracting ID from URL
+            // Mastodon uses /statuses/{id}, Pleroma uses /objects/{id} or /notes/{id}
+            // Also try our own activity IDs: /activities/{id}
+            const idPatterns = [
+                /\/statuses\/([^\/\?#]+)/,
+                /\/objects\/([^\/\?#]+)/,
+                /\/notes\/([^\/\?#]+)/,
+                /\/activities\/([^\/\?#]+)/,
+                /\/@[^\/]+\/(\d+)/,           // Mastodon @user/123
+                /#([^\/]+)$/,                  // Fragment IDs
+            ];
+            
+            for (const pattern of idPatterns) {
+                const match = note.inReplyTo.match(pattern);
+                if (match) {
+                    const extractedId = match[1];
+                    parentComment = db.prepare(`
+                        SELECT id, post_id, activity_id FROM comments 
+                        WHERE activity_id = ? OR activity_id LIKE ?
+                    `).get(note.inReplyTo, `%${extractedId}%`);
+                    
+                    if (parentComment) {
+                        console.log('[ActivityPub] Found parent comment by pattern:', pattern, 'ID:', extractedId);
+                        postId = parentComment.post_id;
+                        parentId = parentComment.id;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Last resort: try to find any comment that might be related by URL similarity
+        if (!postId && note.inReplyTo) {
+            // Extract the last segment of the URL as a potential ID
+            const lastSegment = note.inReplyTo.split('/').pop().split('#').pop().split('?')[0];
+            if (lastSegment && lastSegment.length > 0) {
+                parentComment = db.prepare(`
                     SELECT id, post_id FROM comments WHERE activity_id LIKE ?
-                `);
-                const found = findByActivityStmt.get(`%${identifier}%`);
-                if (found) {
-                    postId = found.post_id;
-                    parentId = found.id;
-                    break;
+                `).get(`%${lastSegment}%`);
+                
+                if (parentComment) {
+                    console.log('[ActivityPub] Found parent comment by last segment:', lastSegment);
+                    postId = parentComment.post_id;
+                    parentId = parentComment.id;
                 }
             }
         }
     }
     
-    if (!postId) return;
+    if (!postId) {
+        console.log('[ActivityPub] Could not find post for comment, inReplyTo:', note.inReplyTo);
+        return;
+    }
+    
+    console.log('[ActivityPub] Comment will be added to post:', postId, 'parent:', parentId);
     
     const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
     
-    // Parse markdown content safely
-    const htmlContent = markdownToSafeHtml(note.content || note.name || '');
+    // Process content including attachments
+    const htmlContent = processActivityPubContent(note);
     
     // Try to get actor info
     let actorName = actorId;
