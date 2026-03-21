@@ -202,43 +202,72 @@ router.get('/u/:username/outbox', (req, res) => {
 
 // Inbox - receive activities
 router.post('/u/:username/inbox', async (req, res) => {
-    console.log('[ActivityPub] === INCOMING REQUEST ===');
+    console.log('\n[ActivityPub] ========== INCOMING REQUEST ==========');
+    console.log('[ActivityPub] Timestamp:', new Date().toISOString());
     console.log('[ActivityPub] Method:', req.method);
+    console.log('[ActivityPub] URL:', req.originalUrl);
     console.log('[ActivityPub] Path:', req.path);
-    console.log('[ActivityPub] Params:', req.params);
-    console.log('[ActivityPub] Content-Type:', req.headers['content-type']);
-    console.log('[ActivityPub] Body type:', typeof req.body);
-    console.log('[ActivityPub] Body:', JSON.stringify(req.body).substring(0,500));
+    console.log('[ActivityPub] Params:', JSON.stringify(req.params));
+    console.log('[ActivityPub] Query:', JSON.stringify(req.query));
+    console.log('[ActivityPub] Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('[ActivityPub] Raw Body:', req.rawBody ? req.rawBody.toString().substring(0, 1000) : 'undefined');
+    console.log('[ActivityPub] Parsed Body:', typeof req.body, JSON.stringify(req.body).substring(0, 500));
+    console.log('[ActivityPub] Body Keys:', Object.keys(req.body || {}));
     
+    // Check username
     if (req.params.username !== USERNAME) {
         console.log('[ActivityPub] REJECTED: Username mismatch. Expected:', USERNAME, 'Got:', req.params.username);
         return res.status(404).json({ error: 'Actor not found' });
     }
     
+    console.log('[ActivityPub] Username OK, processing...');
+    
     try {
         const activity = req.body;
-        console.log('[ActivityPub] Received activity:', activity.type, 'from', activity.actor);
+        
+        if (!activity || !activity.type) {
+            console.log('[ActivityPub] ERROR: Invalid activity - missing type');
+            console.log('[ActivityPub] Activity:', JSON.stringify(activity).substring(0, 500));
+            return res.status(400).json({ error: 'Invalid activity: missing type' });
+        }
+        
+        console.log('[ActivityPub] Activity type:', activity.type);
+        console.log('[ActivityPub] Activity ID:', activity.id);
+        console.log('[ActivityPub] Actor:', typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor));
         
         // Always auto-accept Follow requests (signature verification has compatibility issues)
         if (activity.type === 'Follow') {
-            console.log('[ActivityPub] Auto-accepting Follow request');
-            await handleFollow(activity);
-            res.status(202).json({ status: 'accepted' });
-            return;
+            console.log('[ActivityPub] Processing Follow request...');
+            try {
+                await handleFollow(activity);
+                console.log('[ActivityPub] Follow handled successfully, sending 202');
+                return res.status(202).json({ status: 'accepted' });
+            } catch (followErr) {
+                console.error('[ActivityPub] Error handling Follow:', followErr.message);
+                console.error('[ActivityPub] Stack:', followErr.stack);
+                return res.status(500).json({ error: 'Internal server error' });
+            }
         }
         
         // Verify HTTP Signature for other activities (skip in test mode)
         if (process.env.NODE_ENV !== 'test') {
-            const sigVerify = await verifyHttpSignature(req);
-            
-            if (!sigVerify.valid) {
-                console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
-                // For now, just log and accept anyway for compatibility
+            console.log('[ActivityPub] Verifying HTTP signature...');
+            try {
+                const sigVerify = await verifyHttpSignature(req);
+                if (!sigVerify.valid) {
+                    console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
+                    console.log('[ActivityPub] Processing activity anyway for compatibility');
+                } else {
+                    console.log('[ActivityPub] Signature verification passed');
+                }
+            } catch (sigErr) {
+                console.error('[ActivityPub] Signature verification error:', sigErr.message);
                 console.log('[ActivityPub] Processing activity anyway for compatibility');
             }
         }
         
         // Store activity
+        console.log('[ActivityPub] Storing activity...');
         const stmt = db.prepare(`
             INSERT OR IGNORE INTO activities (activity_id, type, actor, object, target, received_at)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -251,29 +280,41 @@ router.post('/u/:username/inbox', async (req, res) => {
             activity.target ? JSON.stringify(activity.target) : null,
             new Date().toISOString()
         );
+        console.log('[ActivityPub] Activity stored');
         
         // Process activity
+        console.log('[ActivityPub] Processing activity type:', activity.type);
         switch (activity.type) {
             case 'Like':
+                console.log('[ActivityPub] Handling Like...');
                 await handleLike(activity);
                 break;
             case 'Announce':
+                console.log('[ActivityPub] Handling Announce...');
                 await handleAnnounce(activity);
                 break;
             case 'Create':
+                console.log('[ActivityPub] Handling Create...', activity.object?.type);
                 if (activity.object && activity.object.type === 'Note') {
                     await handleComment(activity);
                 }
                 break;
             case 'Undo':
+                console.log('[ActivityPub] Handling Undo...');
                 await handleUndo(activity);
                 break;
+            default:
+                console.log('[ActivityPub] Unknown activity type:', activity.type);
         }
         
+        console.log('[ActivityPub] Activity processed successfully, sending 202');
         res.status(202).json({ status: 'accepted' });
+        console.log('[ActivityPub] ========== REQUEST COMPLETE ==========\n');
     } catch (err) {
-        console.error('[ActivityPub] Error processing inbox:', err.message);
+        console.error('[ActivityPub] ERROR processing inbox:', err.message);
+        console.error('[ActivityPub] Stack:', err.stack);
         res.status(500).json({ error: 'Internal server error' });
+        console.log('[ActivityPub] ========== REQUEST FAILED ==========\n');
     }
 });
 

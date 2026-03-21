@@ -22,11 +22,33 @@ app.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png
 
 // Body parsing - for ActivityPub we need raw body for signature verification
 app.use(express.json({
-    type: ['application/json', 'application/activity+json', 'application/ld+json'],
+    type: ['application/json', 'application/activity+json', 'application/ld+json', 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"'],
     verify: (req, res, buf) => {
         req.rawBody = buf;
     }
 }));
+
+// Fallback body parser for any content type
+app.use(express.json({
+    verify: (req, res, buf) => {
+        if (!req.rawBody) {
+            req.rawBody = buf;
+        }
+    }
+}));
+
+// Log ALL incoming requests for debugging
+app.use((req, res, next) => {
+    if (req.path.includes('/inbox') || req.path.includes('/outbox')) {
+        console.log('\n[Server] === REQUEST INTERCEPTED ===');
+        console.log('[Server] Method:', req.method);
+        console.log('[Server] URL:', req.originalUrl);
+        console.log('[Server] Content-Type:', req.get('Content-Type'));
+        console.log('[Server] Content-Length:', req.get('Content-Length'));
+    }
+    next();
+});
+
 app.use(express.urlencoded({ extended: true }));
 
 // ActivityPub routes
@@ -215,11 +237,18 @@ app.get('/.well-known/webfinger', (req, res) => {
     res.json({
         subject: resource,
         aliases: [ACTOR_URL],
-        links: [{
-            rel: 'self',
-            type: 'application/activity+json',
-            href: ACTOR_URL
-        }]
+        links: [
+            {
+                rel: 'self',
+                type: 'application/activity+json',
+                href: ACTOR_URL
+            },
+            {
+                rel: 'http://webfinger.net/rel/profile-page',
+                type: 'text/html',
+                href: ACTOR_URL
+            }
+        ]
     });
 });
 
