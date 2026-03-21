@@ -1,25 +1,54 @@
-If you have a basic website and want to start blogging, this is the software for you.
+# ActivityPub Blog
+
+A minimalist, single-user blog with ActivityPub federation support.
 
 ## Features
 
 - **Zero JavaScript Frontend**: Pure HTML and CSS, no JavaScript required
-- **ActivityPub Support**: Supports likes, comments, and shares from Fediverse instances
+- **ActivityPub Support**: Follows, likes, comments, and shares from Fediverse instances (Mastodon, Pleroma, etc.)
 - **File-based Content**: Create and edit posts by adding HTML files to `content/posts/`
 - **Tag System**: Organize posts with tags
+- **RSS Feed**: Subscribe via RSS at `/rss.xml`
 - **Colorful Design**: Beautiful gradient accents with minimalist aesthetic
-- **Single User**: Simple single-user architecture
 
 ## Installation
 
 ```bash
 npm install
-
 npm start
 ```
 
-The server will run on http://localhost:6767
+The server runs on http://localhost:6767 by default.
 
-### Creating Posts
+## Environment Variables
+
+Create a `.env` file or set environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOMAIN` | `localhost:6767` | Your domain (e.g., `blog.example.com`) |
+| `PROTOCOL` | `http` | `http` or `https` (use `https` in production) |
+| `USERNAME` | `admin` | Your ActivityPub username |
+| `PORT` | `6767` | Server port |
+| `DISPLAY_NAME` | `Blog Admin` | Display name shown on profile |
+| `BIO` | `A minimalist ActivityPub blog` | Profile bio |
+| `DEBUG_AP` | `false` | Enable verbose ActivityPub logging |
+
+### Debugging ActivityPub
+
+To enable detailed logging for debugging federation issues:
+
+```bash
+DEBUG_AP=true npm start
+```
+
+This logs:
+- Incoming request headers and bodies
+- Activity processing details
+- Parent comment resolution steps
+- Signature verification
+
+## Creating Posts
 
 Create HTML files in `content/posts/` with metadata in HTML comments:
 
@@ -34,17 +63,49 @@ tags: tag1, tag2, tag3
 </article>
 ```
 
-The filename (without `.html`) becomes the post slug.
+The filename (without `.html`) becomes the post slug. For example, `my-first-post.html` will be accessible at `/p/my-first-post`.
 
-### ActivityPub Interactions
+## ActivityPub Federation
 
-People can:
-- **Follow** your blog from Mastodon/Pleroma
-- **Like** posts (Like activity)
-- **Share/Reblog** posts (Announce activity)
-- **Reply** to posts (Create Note activity)
+### Following the Blog
 
-All interactions appear on post pages automatically.
+From any ActivityPub-compatible platform (Mastodon, Pleroma, etc.), search for:
+```
+@username@yourdomain.com
+```
+
+### Supported Activities
+
+- **Follow**: Users can follow your blog to receive new posts
+- **Like**: Likes from followers appear on posts
+- **Announce (Boost)**: Shares/boosts appear on posts
+- **Create Note (Reply)**: Comments appear on posts with threading support
+- **Undo**: Unfollows, unlikes, and un-boosts
+
+### Media in Comments
+
+ActivityPub comments support:
+- Images (as attachments)
+- Videos (as attachments)
+- Audio (as attachments)
+- HTML content (sanitized)
+
+### ActivityPub Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/.well-known/webfinger` | GET | WebFinger discovery |
+| `/u/:username` | GET | Actor profile (ActivityPub JSON) |
+| `/u/:username/outbox` | GET | Posts collection |
+| `/u/:username/inbox` | POST | Receive activities |
+| `/u/:username/followers` | GET | Followers collection |
+| `/u/:username/following` | GET | Following collection |
+| `/p/:slug` | GET | Post (HTML or ActivityPub JSON) |
+| `/p/:slug/likes` | GET | Likes collection |
+| `/p/:slug/shares` | GET | Shares collection |
+| `/rss.xml` | GET | RSS feed |
+
+## Development
 
 ### Run Tests
 
@@ -52,14 +113,57 @@ All interactions appear on post pages automatically.
 npm test
 ```
 
-This will use playwright.
+Tests use Playwright for end-to-end testing.
 
-## ActivityPub Endpoints
+### File Watcher
 
-- `GET /.well-known/webfinger` - WebFinger discovery
-- `GET /u/:username` - Actor profile
-- `GET /u/:username/outbox` - Posts collection
-- `POST /u/:username/inbox` - Receive activities
-- `GET /u/:username/followers` - Followers collection
-- `GET /u/:username/following` - Following collection
+The server watches `content/posts/` for file changes and automatically:
+- Creates new posts when files are added
+- Updates posts when files are modified
+- Queues ActivityPub Create/Update activities for federation
+- Removes posts when files are deleted
+
+## Production Setup
+
+1. Set `PROTOCOL=https` in environment
+2. Use a reverse proxy (nginx, Caddy, etc.) with SSL
+3. Set your domain: `DOMAIN=blog.example.com`
+4. Configure user settings in `user-settings.json`:
+
+```json
+{
+  "display_name": "Your Name",
+  "bio": "Your blog description",
+  "avatar_url": "https://example.com/avatar.png"
+}
+```
+
+## Troubleshooting
+
+### Federation Not Working
+
+1. Ensure `PROTOCOL=https` is set
+2. Verify WebFinger returns correct URLs:
+   ```bash
+   curl https://yourdomain.com/.well-known/webfinger?resource=acct:username@yourdomain.com
+   ```
+3. Enable debug logging: `DEBUG_AP=true npm start`
+4. Check that POST requests reach your server (check nginx logs)
+
+### Comments Not Appearing
+
+1. Old posts may have different URLs from domain/protocol changes
+2. URL matching is now domain-agnostic - it extracts post slugs
+3. Comments from ActivityPub include media attachments automatically
+4. Nested comments (replies) are supported with proper threading
+
+### Mastodon Not Delivering
+
+If Mastodon can fetch your posts but not send likes/comments:
+1. Mastodon may have marked your domain as unavailable after previous failures
+2. The Mastodon instance admin can clear this with:
+   ```sql
+   DELETE FROM unavailable_domains WHERE domain = 'yourdomain.com';
+   ```
+3. New followers should work immediately after clearing
 

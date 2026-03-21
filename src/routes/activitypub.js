@@ -10,6 +10,8 @@ const { marked } = require('marked');
 
 const router = express.Router();
 
+const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
+
 const KEYS_FILE = path.join(__dirname, '..', '..', 'data', 'keys.json');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', '..', 'user-settings.json');
 const PFP_FILE = path.join(__dirname, '..', '..', 'public', 'pfp.png');
@@ -236,17 +238,14 @@ router.get('/u/:username/outbox', (req, res) => {
 
 // Inbox - receive activities
 router.post('/u/:username/inbox', async (req, res) => {
-    console.log('\n[ActivityPub] ========== INCOMING REQUEST ==========');
-    console.log('[ActivityPub] Timestamp:', new Date().toISOString());
-    console.log('[ActivityPub] Method:', req.method);
-    console.log('[ActivityPub] URL:', req.originalUrl);
-    console.log('[ActivityPub] Path:', req.path);
-    console.log('[ActivityPub] Params:', JSON.stringify(req.params));
-    console.log('[ActivityPub] Query:', JSON.stringify(req.query));
-    console.log('[ActivityPub] Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('[ActivityPub] Raw Body:', req.rawBody ? req.rawBody.toString().substring(0, 1000) : 'undefined');
-    console.log('[ActivityPub] Parsed Body:', typeof req.body, JSON.stringify(req.body).substring(0, 500));
-    console.log('[ActivityPub] Body Keys:', Object.keys(req.body || {}));
+    if (DEBUG_AP) {
+        console.log('\n[ActivityPub] ========== INCOMING REQUEST ==========');
+        console.log('[ActivityPub] Timestamp:', new Date().toISOString());
+        console.log('[ActivityPub] Method:', req.method);
+        console.log('[ActivityPub] URL:', req.originalUrl);
+        console.log('[ActivityPub] Content-Type:', req.get('Content-Type'));
+        console.log('[ActivityPub] Body:', JSON.stringify(req.body).substring(0, 500));
+    }
     
     // Check username
     if (req.params.username !== USERNAME) {
@@ -254,54 +253,44 @@ router.post('/u/:username/inbox', async (req, res) => {
         return res.status(404).json({ error: 'Actor not found' });
     }
     
-    console.log('[ActivityPub] Username OK, processing...');
-    
     try {
         const activity = req.body;
         
         if (!activity || !activity.type) {
             console.log('[ActivityPub] ERROR: Invalid activity - missing type');
-            console.log('[ActivityPub] Activity:', JSON.stringify(activity).substring(0, 500));
             return res.status(400).json({ error: 'Invalid activity: missing type' });
         }
         
-        console.log('[ActivityPub] Activity type:', activity.type);
-        console.log('[ActivityPub] Activity ID:', activity.id);
-        console.log('[ActivityPub] Actor:', typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor));
+        if (DEBUG_AP) {
+            console.log('[ActivityPub] Activity type:', activity.type);
+            console.log('[ActivityPub] Actor:', typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor));
+        }
         
         // Always auto-accept Follow requests (signature verification has compatibility issues)
         if (activity.type === 'Follow') {
-            console.log('[ActivityPub] Processing Follow request...');
+            console.log('[ActivityPub] Processing Follow request');
             try {
                 await handleFollow(activity);
-                console.log('[ActivityPub] Follow handled successfully, sending 202');
                 return res.status(202).json({ status: 'accepted' });
             } catch (followErr) {
                 console.error('[ActivityPub] Error handling Follow:', followErr.message);
-                console.error('[ActivityPub] Stack:', followErr.stack);
                 return res.status(500).json({ error: 'Internal server error' });
             }
         }
         
         // Verify HTTP Signature for other activities (skip in test mode)
         if (process.env.NODE_ENV !== 'test') {
-            console.log('[ActivityPub] Verifying HTTP signature...');
             try {
                 const sigVerify = await verifyHttpSignature(req);
                 if (!sigVerify.valid) {
                     console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
-                    console.log('[ActivityPub] Processing activity anyway for compatibility');
-                } else {
-                    console.log('[ActivityPub] Signature verification passed');
                 }
             } catch (sigErr) {
-                console.error('[ActivityPub] Signature verification error:', sigErr.message);
-                console.log('[ActivityPub] Processing activity anyway for compatibility');
+                console.warn('[ActivityPub] Signature verification error:', sigErr.message);
             }
         }
         
         // Store activity
-        console.log('[ActivityPub] Storing activity...');
         const stmt = db.prepare(`
             INSERT OR IGNORE INTO activities (activity_id, type, actor, object, target, received_at)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -314,41 +303,36 @@ router.post('/u/:username/inbox', async (req, res) => {
             activity.target ? JSON.stringify(activity.target) : null,
             new Date().toISOString()
         );
-        console.log('[ActivityPub] Activity stored');
+        if (DEBUG_AP) console.log('[ActivityPub] Activity stored');
         
         // Process activity
-        console.log('[ActivityPub] Processing activity type:', activity.type);
         switch (activity.type) {
             case 'Like':
-                console.log('[ActivityPub] Handling Like...');
+                if (DEBUG_AP) console.log('[ActivityPub] Handling Like');
                 await handleLike(activity);
                 break;
             case 'Announce':
-                console.log('[ActivityPub] Handling Announce...');
+                if (DEBUG_AP) console.log('[ActivityPub] Handling Announce');
                 await handleAnnounce(activity);
                 break;
             case 'Create':
-                console.log('[ActivityPub] Handling Create...', activity.object?.type);
+                if (DEBUG_AP) console.log('[ActivityPub] Handling Create');
                 if (activity.object && activity.object.type === 'Note') {
                     await handleComment(activity);
                 }
                 break;
             case 'Undo':
-                console.log('[ActivityPub] Handling Undo...');
+                if (DEBUG_AP) console.log('[ActivityPub] Handling Undo');
                 await handleUndo(activity);
                 break;
             default:
-                console.log('[ActivityPub] Unknown activity type:', activity.type);
+                if (DEBUG_AP) console.log('[ActivityPub] Unknown activity type:', activity.type);
         }
         
-        console.log('[ActivityPub] Activity processed successfully, sending 202');
         res.status(202).json({ status: 'accepted' });
-        console.log('[ActivityPub] ========== REQUEST COMPLETE ==========\n');
     } catch (err) {
-        console.error('[ActivityPub] ERROR processing inbox:', err.message);
-        console.error('[ActivityPub] Stack:', err.stack);
+        console.error('[ActivityPub] Error processing inbox:', err.message);
         res.status(500).json({ error: 'Internal server error' });
-        console.log('[ActivityPub] ========== REQUEST FAILED ==========\n');
     }
 });
 
@@ -407,11 +391,11 @@ async function handleAnnounce(activity) {
 async function handleComment(activity) {
     const note = activity.object;
     if (!note.inReplyTo) {
-        console.log('[ActivityPub] Comment missing inReplyTo, skipping');
+        if (DEBUG_AP) console.log('[ActivityPub] Comment missing inReplyTo, skipping');
         return;
     }
     
-    console.log('[ActivityPub] Processing comment, inReplyTo:', note.inReplyTo);
+    if (DEBUG_AP) console.log('[ActivityPub] Processing comment, inReplyTo:', note.inReplyTo);
     
     let postId = null;
     let parentId = null;
@@ -422,33 +406,30 @@ async function handleComment(activity) {
         const slug = postMatch[1];
         const post = Posts.getBySlug(slug);
         if (post) {
-            console.log('[ActivityPub] Comment is reply to post:', slug);
+            if (DEBUG_AP) console.log('[ActivityPub] Comment is reply to post:', slug);
             postId = post.id;
         }
     }
     
     // If not a post reply, try to find the parent comment
     if (!postId) {
-        console.log('[ActivityPub] Checking if reply to existing comment...');
-        
         // Try exact match on activity_id first
         let parentComment = db.prepare('SELECT id, post_id FROM comments WHERE activity_id = ?').get(note.inReplyTo);
         
         if (parentComment) {
-            console.log('[ActivityPub] Found parent comment by exact activity_id');
+            if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by exact activity_id');
             postId = parentComment.post_id;
             parentId = parentComment.id;
         } else {
             // Try to match by extracting ID from URL
             // Mastodon uses /statuses/{id}, Pleroma uses /objects/{id} or /notes/{id}
-            // Also try our own activity IDs: /activities/{id}
             const idPatterns = [
                 /\/statuses\/([^\/\?#]+)/,
                 /\/objects\/([^\/\?#]+)/,
                 /\/notes\/([^\/\?#]+)/,
                 /\/activities\/([^\/\?#]+)/,
-                /\/@[^\/]+\/(\d+)/,           // Mastodon @user/123
-                /#([^\/]+)$/,                  // Fragment IDs
+                /\/@[^\/]+\/(\d+)/,
+                /#([^\/]+)$/,
             ];
             
             for (const pattern of idPatterns) {
@@ -461,7 +442,7 @@ async function handleComment(activity) {
                     `).get(note.inReplyTo, `%${extractedId}%`);
                     
                     if (parentComment) {
-                        console.log('[ActivityPub] Found parent comment by pattern:', pattern, 'ID:', extractedId);
+                        if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by pattern:', pattern);
                         postId = parentComment.post_id;
                         parentId = parentComment.id;
                         break;
@@ -472,7 +453,6 @@ async function handleComment(activity) {
         
         // Last resort: try to find any comment that might be related by URL similarity
         if (!postId && note.inReplyTo) {
-            // Extract the last segment of the URL as a potential ID
             const lastSegment = note.inReplyTo.split('/').pop().split('#').pop().split('?')[0];
             if (lastSegment && lastSegment.length > 0) {
                 parentComment = db.prepare(`
@@ -480,7 +460,7 @@ async function handleComment(activity) {
                 `).get(`%${lastSegment}%`);
                 
                 if (parentComment) {
-                    console.log('[ActivityPub] Found parent comment by last segment:', lastSegment);
+                    if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by last segment:', lastSegment);
                     postId = parentComment.post_id;
                     parentId = parentComment.id;
                 }
@@ -493,7 +473,7 @@ async function handleComment(activity) {
         return;
     }
     
-    console.log('[ActivityPub] Comment will be added to post:', postId, 'parent:', parentId);
+    if (DEBUG_AP) console.log('[ActivityPub] Comment will be added to post:', postId, 'parent:', parentId);
     
     const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
     

@@ -8,22 +8,26 @@ const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
 const db = require('./db');
 
+const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
+
 const app = express();
 
-// Log ALL requests BEFORE any middleware - this catches everything
-app.use((req, res, next) => {
-    console.log('\n[Server] ========== REQUEST START ==========');
-    console.log('[Server] Time:', new Date().toISOString());
-    console.log('[Server] Method:', req.method);
-    console.log('[Server] URL:', req.originalUrl);
-    console.log('[Server] Path:', req.path);
-    console.log('[Server] Host:', req.get('Host'));
-    console.log('[Server] Content-Type:', req.get('Content-Type'));
-    console.log('[Server] Content-Length:', req.get('Content-Length'));
-    console.log('[Server] User-Agent:', req.get('User-Agent'));
-    console.log('[Server] =========================================');
-    next();
-});
+// Debug logging for ActivityPub requests
+if (DEBUG_AP) {
+    app.use((req, res, next) => {
+        console.log('\n[Server] ========== REQUEST START ==========');
+        console.log('[Server] Time:', new Date().toISOString());
+        console.log('[Server] Method:', req.method);
+        console.log('[Server] URL:', req.originalUrl);
+        console.log('[Server] Path:', req.path);
+        console.log('[Server] Host:', req.get('Host'));
+        console.log('[Server] Content-Type:', req.get('Content-Type'));
+        console.log('[Server] Content-Length:', req.get('Content-Length'));
+        console.log('[Server] User-Agent:', req.get('User-Agent'));
+        console.log('[Server] =========================================');
+        next();
+    });
+}
 
 // Setup view engine
 app.set('view engine', 'ejs');
@@ -59,24 +63,9 @@ app.use(express.json({
 app.use((err, req, res, next) => {
     if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
         console.error('[Server] JSON parsing error:', err.message);
-        console.error('[Server] Raw body attempt:', req.rawBody ? req.rawBody.toString().substring(0, 200) : 'none');
         return res.status(400).json({ error: 'Invalid JSON' });
     }
     next(err);
-});
-
-// Log ALL incoming requests for debugging
-app.use((req, res, next) => {
-    if (req.path.includes('/inbox') || req.path.includes('/outbox')) {
-        console.log('\n[Server] === ACTIVITYPUB REQUEST ===');
-        console.log('[Server] Method:', req.method);
-        console.log('[Server] URL:', req.originalUrl);
-        console.log('[Server] Content-Type:', req.get('Content-Type'));
-        console.log('[Server] Content-Length:', req.get('Content-Length'));
-        console.log('[Server] Has rawBody:', !!req.rawBody);
-        console.log('[Server] Body parsed:', typeof req.body);
-    }
-    next();
 });
 
 app.use(express.urlencoded({ extended: true }));
