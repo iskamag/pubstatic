@@ -20,8 +20,13 @@ app.set('layout', 'layout');
 app.use('/static', express.static(path.join(__dirname, '..', 'public')));
 app.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
 
-// Body parsing
-app.use(express.json({ type: ['application/json', 'application/activity+json', 'application/ld+json'] }));
+// Body parsing - for ActivityPub we need raw body for signature verification
+app.use(express.json({
+    type: ['application/json', 'application/activity+json', 'application/ld+json'],
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // ActivityPub routes
