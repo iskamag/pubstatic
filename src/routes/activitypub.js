@@ -320,8 +320,9 @@ router.post('/u/:username/inbox', async (req, res) => {
 
 async function handleLike(activity) {
     const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
-    const escapedBaseUrl = escapeRegex(BASE_URL);
-    const match = objectUrl.match(new RegExp(`${escapedBaseUrl}/p/(.+)$`));
+    
+    // Extract slug from URL regardless of domain (supports both old and new URLs)
+    const match = objectUrl.match(/\/p\/([^\/\?#]+)/);
     
     if (!match) return;
     
@@ -345,8 +346,9 @@ async function handleLike(activity) {
 
 async function handleAnnounce(activity) {
     const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
-    const escapedBaseUrl = escapeRegex(BASE_URL);
-    const match = objectUrl.match(new RegExp(`${escapedBaseUrl}/p/(.+)$`));
+    
+    // Extract slug from URL regardless of domain (supports both old and new URLs)
+    const match = objectUrl.match(/\/p\/([^\/\?#]+)/);
     
     if (!match) return;
     
@@ -372,20 +374,23 @@ async function handleComment(activity) {
     const note = activity.object;
     if (!note.inReplyTo) return;
     
-    const escapedBaseUrl = escapeRegex(BASE_URL);
     let postId = null;
     let parentId = null;
     
-    // Check if replying to a post
-    const postMatch = note.inReplyTo.match(new RegExp(`${escapedBaseUrl}/p/(.+)$`));
+    // Check if replying to a post - extract slug from URL regardless of domain
+    const postMatch = note.inReplyTo.match(/\/p\/([^\/\?#]+)/);
     if (postMatch) {
         const slug = postMatch[1];
         const post = Posts.getBySlug(slug);
-        if (!post) return;
-        postId = post.id;
-    } else {
+        if (post) {
+            postId = post.id;
+        }
+    }
+    
+    // If not a post reply, check if replying to a comment
+    if (!postId) {
         // Check if replying to a comment (using activity URL pattern)
-        const commentMatch = note.inReplyTo.match(/\/notes\/(.+)$/);
+        const commentMatch = note.inReplyTo.match(/\/notes\/([^\/\?#]+)/) || note.inReplyTo.match(/\/activities\/([^\/\?#]+)/);
         if (commentMatch) {
             // Find the parent comment by activity_id
             const findParentStmt = db.prepare(`
@@ -408,6 +413,37 @@ async function handleComment(activity) {
                 if (byUrl) {
                     postId = byUrl.post_id;
                     parentId = byUrl.id;
+                }
+            }
+        }
+    }
+    
+    // Also try direct URL match for comment replies
+    if (!postId && note.inReplyTo) {
+        // Check if it's a direct link to another comment on our server
+        // Format: /u/username/statuses/... or similar patterns from other fediverse platforms
+        const urlPatterns = [
+            /\/p\/[^\/]+(?:\/comments?)?\/(\d+)/,  // /p/slug/comment/123
+            /\/statuses\/(\w+)/,                    // Mastodon-style
+            /\/notes\/(\w+)/,                       // Pleroma-style
+            /\/objects\/(\w+)/,                     // ActivityPub objects
+            /\/activities\/(\w+)/,                  // ActivityPub activities
+            /\/@[^\/]+\/(\d+)/,                      // Mastodon-style @user/123
+        ];
+        
+        for (const pattern of urlPatterns) {
+            const urlMatch = note.inReplyTo.match(pattern);
+            if (urlMatch) {
+                const identifier = urlMatch[1];
+                // Try to find by activity_id or stored URL
+                const findByActivityStmt = db.prepare(`
+                    SELECT id, post_id FROM comments WHERE activity_id LIKE ?
+                `);
+                const found = findByActivityStmt.get(`%${identifier}%`);
+                if (found) {
+                    postId = found.post_id;
+                    parentId = found.id;
+                    break;
                 }
             }
         }
