@@ -449,13 +449,10 @@ async function handleFollow(activity) {
             type: 'Accept',
             actor: ACTOR_URL,
             to: [actorId],
-            object: {
-                type: 'Follow',
-                id: activity.id,
-                actor: actorId,
-                object: ACTOR_URL
-            }
+            object: activity.id
         };
+        
+        console.log('[ActivityPub] Sending Accept activity:', JSON.stringify(acceptActivity));
         
         const body = JSON.stringify(acceptActivity);
         const headers = signRequest(inboxUrl, 'POST', body, keys.privateKey, `${ACTOR_URL}#main-key`);
@@ -467,9 +464,11 @@ async function handleFollow(activity) {
         });
         
         if (response.ok) {
-            console.log(`[ActivityPub] Sent Accept to ${inboxUrl}`);
+            console.log(`[ActivityPub] Sent Accept to ${inboxUrl} - Status: ${response.status}`);
         } else {
-            console.error(`[ActivityPub] Failed to send Accept: ${response.status}`);
+            const errorText = await response.text();
+            console.error(`[ActivityPub] Failed to send Accept to ${inboxUrl} - Status: ${response.status}`);
+            console.error(`[ActivityPub] Accept error response: ${errorText}`);
         }
         
     } catch (err) {
@@ -762,9 +761,12 @@ function signRequest(url, method, body, privateKey, keyId) {
     const urlObj = new URL(url);
     const requestTarget = `${method.toLowerCase()} ${urlObj.pathname}`;
     
+    // body should already be a string (JSON.stringify'd)
+    const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+    
     const sigData = generateHttpSignature(requestTarget, {
         host: urlObj.host,
-        body: body ? JSON.stringify(body) : ''
+        body: bodyString
     }, privateKey);
     
     const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="${sigData.signature}"`;
