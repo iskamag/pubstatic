@@ -391,11 +391,13 @@ async function handleAnnounce(activity) {
 async function handleComment(activity) {
     const note = activity.object;
     if (!note.inReplyTo) {
-        if (DEBUG_AP) console.log('[ActivityPub] Comment missing inReplyTo, skipping');
+        console.log('[ActivityPub] Comment missing inReplyTo, skipping');
         return;
     }
     
-    if (DEBUG_AP) console.log('[ActivityPub] Processing comment, inReplyTo:', note.inReplyTo);
+    // Log the Note ID we're storing (for replies to match against)
+    const noteId = note.id || activity.id;
+    console.log('[ActivityPub] Received comment:', noteId, 'inReplyTo:', note.inReplyTo);
     
     let postId = null;
     let parentId = null;
@@ -417,12 +419,18 @@ async function handleComment(activity) {
         let parentComment = db.prepare('SELECT id, post_id FROM comments WHERE activity_id = ?').get(note.inReplyTo);
         
         if (parentComment) {
-            if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by exact activity_id');
+            console.log('[ActivityPub] Found parent comment by exact activity_id:', note.inReplyTo);
             postId = parentComment.post_id;
             parentId = parentComment.id;
         } else {
+            // Log all comments in database for debugging
+            if (DEBUG_AP) {
+                const allComments = db.prepare('SELECT id, activity_id FROM comments').all();
+                console.log('[ActivityPub] Looking for:', note.inReplyTo);
+                console.log('[ActivityPub] All comments:', allComments.map(c => ({ id: c.id, activity_id: c.activity_id })));
+            }
+            
             // Try to match by extracting ID from URL
-            // Mastodon uses /statuses/{id}, Pleroma uses /objects/{id} or /notes/{id}
             const idPatterns = [
                 /\/statuses\/([^\/\?#]+)/,
                 /\/objects\/([^\/\?#]+)/,
@@ -442,7 +450,7 @@ async function handleComment(activity) {
                     `).get(note.inReplyTo, `%${extractedId}%`);
                     
                     if (parentComment) {
-                        if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by pattern:', pattern);
+                        console.log('[ActivityPub] Found parent comment by pattern:', pattern);
                         postId = parentComment.post_id;
                         parentId = parentComment.id;
                         break;
@@ -460,7 +468,7 @@ async function handleComment(activity) {
                 `).get(`%${lastSegment}%`);
                 
                 if (parentComment) {
-                    if (DEBUG_AP) console.log('[ActivityPub] Found parent comment by last segment:', lastSegment);
+                    console.log('[ActivityPub] Found parent comment by last segment:', lastSegment);
                     postId = parentComment.post_id;
                     parentId = parentComment.id;
                 }
