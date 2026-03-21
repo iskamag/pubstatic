@@ -114,16 +114,21 @@ router.get('/u/:username', (req, res) => {
     }
     
     const actor = {
-        '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
+        '@context': [
+            'https://www.w3.org/ns/activitystreams',
+            'https://w3id.org/security/v1'
+        ],
         id: ACTOR_URL,
         type: 'Person',
         preferredUsername: USER.preferredUsername,
         name: userSettings.display_name || USER.name,
         summary: userSettings.bio || USER.summary,
+        url: ACTOR_URL,
         inbox: USER.inbox,
         outbox: USER.outbox,
         followers: USER.followers,
         following: USER.following,
+        published: USER.published || new Date().toISOString(),
         publicKey: {
             id: `${ACTOR_URL}#main-key`,
             owner: ACTOR_URL,
@@ -197,13 +202,22 @@ router.get('/u/:username/outbox', (req, res) => {
 
 // Inbox - receive activities
 router.post('/u/:username/inbox', async (req, res) => {
+    console.log('[ActivityPub] === INCOMING REQUEST ===');
+    console.log('[ActivityPub] Method:', req.method);
+    console.log('[ActivityPub] Path:', req.path);
+    console.log('[ActivityPub] Params:', req.params);
+    console.log('[ActivityPub] Content-Type:', req.headers['content-type']);
+    console.log('[ActivityPub] Body type:', typeof req.body);
+    console.log('[ActivityPub] Body:', JSON.stringify(req.body).substring(0,500));
+    
     if (req.params.username !== USERNAME) {
+        console.log('[ActivityPub] REJECTED: Username mismatch. Expected:', USERNAME, 'Got:', req.params.username);
         return res.status(404).json({ error: 'Actor not found' });
     }
     
     try {
         const activity = req.body;
-        console.log('[ActivityPub] Received activity:', activity.type);
+        console.log('[ActivityPub] Received activity:', activity.type, 'from', activity.actor);
         
         // Always auto-accept Follow requests (signature verification has compatibility issues)
         if (activity.type === 'Follow') {

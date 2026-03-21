@@ -21,6 +21,7 @@ module.exports = {
         inbox: `${PROTOCOL}://${DOMAIN}/u/${USERNAME}/inbox`,
         outbox: `${PROTOCOL}://${DOMAIN}/u/${USERNAME}/outbox`,
         followers: `${PROTOCOL}://${DOMAIN}/u/${USERNAME}/followers`,
-        following: `${PROTOCOL}://${DOMAIN}/u/${USERNAME}/following`
+        following: `${PROTOCOL}://${DOMAIN}/u/${USERNAME}/following`,
+        published: process.env.ACCOUNT_PUBLISHED || new Date().toISOString()
     }
 };
