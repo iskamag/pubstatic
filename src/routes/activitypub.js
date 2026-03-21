@@ -495,11 +495,14 @@ async function handleComment(activity) {
     }
     
     try {
+        // Store the Note ID (not Create activity ID) so replies can find this comment
+        const noteId = note.id || activity.id;
+        
         const stmt = db.prepare(`
             INSERT INTO comments (post_id, parent_id, actor_id, actor_url, actor_name, content, created_at, activity_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(postId, parentId, actorId, actorId, actorName, htmlContent, new Date().toISOString(), activity.id);
+        stmt.run(postId, parentId, actorId, actorId, actorName, htmlContent, new Date().toISOString(), noteId);
         console.log(`[ActivityPub] Added comment from ${actorName} on post ${postId}${parentId ? ` (reply to comment ${parentId})` : ''}`);
     } catch (err) {
         console.error('[ActivityPub] Error handling comment:', err.message);
