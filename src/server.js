@@ -48,21 +48,12 @@ app.use(express.json({
     limit: '10mb'
 }));
 
-// Fallback body parser for any JSON-like content type
-app.use(express.json({
-    type: '*/*',
-    verify: (req, res, buf) => {
-        if (!req.rawBody) {
-            req.rawBody = buf;
-        }
-    },
-    limit: '10mb'
-}));
-
 // Error handler for body parsing errors
 app.use((err, req, res, next) => {
     if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
         console.error('[Server] JSON parsing error:', err.message);
+        console.error('[Server] Content-Type:', req.get('Content-Type'));
+        console.error('[Server] Body preview:', req.rawBody ? req.rawBody.toString().substring(0, 200) : 'none');
         return res.status(400).json({ error: 'Invalid JSON' });
     }
     next(err);
