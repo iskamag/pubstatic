@@ -953,6 +953,13 @@ function queueOutboundActivity(type, object, recipients = null) {
     );
     
     console.log(`[ActivityPub] Queued ${type} activity ${activityId} for ${targetRecipients.length} recipients`);
+    
+    setImmediate(() => {
+        processOutboundActivities().catch(err => {
+            console.error('[ActivityPub] Error processing outbound activities:', err.message);
+        });
+    });
+    
     return activityId;
 }
 
@@ -992,6 +999,11 @@ async function processOutboundActivities() {
     `);
     
     const pending = stmt.all();
+    
+    if (pending.length > 0) {
+        console.log(`[ActivityPub] Processing ${pending.length} pending activities...`);
+    }
+    
     const keyId = `${ACTOR_URL}#main-key`;
     
     for (const activity of pending) {
