@@ -1,6 +1,7 @@
 const db = require('../db');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 class Posts {
     static getAll(limit = 10, offset = 0) {
@@ -52,24 +53,39 @@ class Posts {
     }
 
     static createOrUpdate({ slug, title, content, excerpt, tags = [], filePath, fileMtime }) {
+        // Calculate content hash to detect actual changes
+        const contentHash = crypto.createHash('md5')
+            .update(JSON.stringify({ title, content, tags }))
+            .digest('hex');
+        
         const now = new Date().toISOString();
-        const existing = db.prepare('SELECT id FROM posts WHERE slug = ?').get(slug);
+        const existing = db.prepare('SELECT id, content_hash FROM posts WHERE slug = ?').get(slug);
         
         if (existing) {
+            // Only update if content hash changed
+            if (existing.content_hash && existing.content_hash === contentHash) {
+                // Content unchanged, just update file metadata
+                db.prepare(`
+                    UPDATE posts SET file_path = ?, file_mtime = ? WHERE slug = ?
+                `).run(filePath, fileMtime, slug);
+                return existing.id;
+            }
+            
+            // Content changed (or no previous hash), full update
             const stmt = db.prepare(`
                 UPDATE posts 
                 SET title = ?, content = ?, excerpt = ?, tags = ?, 
-                    updated_at = ?, file_path = ?, file_mtime = ?
+                    updated_at = ?, file_path = ?, file_mtime = ?, content_hash = ?
                 WHERE slug = ?
             `);
-            stmt.run(title, content, excerpt, JSON.stringify(tags), now, filePath, fileMtime, slug);
+            stmt.run(title, content, excerpt, JSON.stringify(tags), now, filePath, fileMtime, contentHash, slug);
             return existing.id;
         } else {
             const stmt = db.prepare(`
-                INSERT INTO posts (slug, title, content, excerpt, published_at, tags, file_path, file_mtime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO posts (slug, title, content, excerpt, published_at, tags, file_path, file_mtime, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const result = stmt.run(slug, title, content, excerpt, now, JSON.stringify(tags), filePath, fileMtime);
+            const result = stmt.run(slug, title, content, excerpt, now, JSON.stringify(tags), filePath, fileMtime, contentHash);
             return result.lastInsertRowid;
         }
     }

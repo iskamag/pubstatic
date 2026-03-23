@@ -24,6 +24,7 @@ db.exec(`
         updated_at TEXT,
         file_path TEXT NOT NULL,
         file_mtime INTEGER NOT NULL,
+        content_hash TEXT,
         tags TEXT -- JSON array of tags
     );
 
