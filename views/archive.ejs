@@ -1,10 +1,11 @@
+<% const bp = blogPath ? blogPath + '/' : '/'; %>
 <section class="hero">
     <h1><%= monthName %> <%= year %></h1>
     <% if (tags.length > 0) { %>
     <nav class="tags-nav">
         <span class="tags-label">Tags:</span>
         <% tags.forEach(tag => { %>
-        <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+        <a href="<%= bp %>tag/<%= tag %>" class="tag">#<%= tag %></a>
         <% }); %>
     </nav>
     <% } %>
@@ -19,7 +20,7 @@
         <% posts.forEach(post => { %>
         <article class="post-card" id="post-<%= post.id %>">
             <h2 class="post-title">
-                <a href="/p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
+                <a href="<%= bp %>p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
             </h2>
             <time class="post-date" datetime="<%= post.published_at %>">
                 <%= new Date(post.published_at).toLocaleDateString('en-US', { 
@@ -32,7 +33,7 @@
             <% if (post.tags.length > 0) { %>
             <div class="post-tags">
                 <% post.tags.forEach(tag => { %>
-                <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+                <a href="<%= bp %>tag/<%= tag %>" class="tag">#<%= tag %></a>
                 <% }); %>
             </div>
             <% } %>
@@ -48,13 +49,13 @@
     <% if (pagination && (pagination.hasPrev || pagination.hasNext)) { %>
     <nav class="pagination">
         <% if (pagination.hasPrev) { %>
-        <a href="/archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current - 1 %>" class="pagination-link pagination-prev">← Newer</a>
+        <a href="<%= bp %>archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current - 1 %>" class="pagination-link pagination-prev">← Newer</a>
         <% } else { %>
         <span class="pagination-link pagination-disabled">← Newer</span>
         <% } %>
         <span class="pagination-info">Page <%= pagination.current %> of <%= pagination.total %></span>
         <% if (pagination.hasNext) { %>
-        <a href="/archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current + 1 %>" class="pagination-link pagination-next">Older →</a>
+        <a href="<%= bp %>archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current + 1 %>" class="pagination-link pagination-next">Older →</a>
         <% } else { %>
         <span class="pagination-link pagination-disabled">Older →</span>
         <% } %>
@@ -63,5 +64,5 @@
 <% } %>
 
 <nav class="post-nav">
-    <a href="/" class="back-link">← Back to all posts</a>
+    <a href="<%= bp || '/' %>" class="back-link">← Back to all posts</a>
 </nav>

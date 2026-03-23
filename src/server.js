@@ -2,7 +2,7 @@ const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
 const path = require('path');
 const fs = require('fs');
-const { DOMAIN, USERNAME, PORT, BASE_URL, ACTOR_URL, USER } = require('./config');
+const { DOMAIN, USERNAME, PORT, BASE_URL, ACTOR_URL, USER, BLOG_PATH } = require('./config');
 const Posts = require('./models/posts');
 const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
@@ -262,8 +262,17 @@ app.get('/.well-known/webfinger', (req, res) => {
     });
 });
 
-// Frontend routes
-app.get('/', async (req, res) => {
+// Frontend routes - mounted at BLOG_PATH (e.g., /posts/)
+// ActivityPub endpoints remain at root (required by spec)
+const blog = express.Router();
+
+// Helper to join path segments properly (avoids // issues)
+function blogPath(...parts) {
+    const base = BLOG_PATH.endsWith('/') ? BLOG_PATH.slice(0, -1) : BLOG_PATH;
+    return base + '/' + parts.join('/');
+}
+
+blog.get('/', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 10;
     const offset = (page - 1) * limit;
@@ -280,6 +289,8 @@ app.get('/', async (req, res) => {
         tags,
         months,
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
+        blogUrl: blogPath.bind(blogPath),
         user: USER,
         pagination: {
             current: page,
@@ -290,7 +301,7 @@ app.get('/', async (req, res) => {
     });
 });
 
-app.get('/archive/:year/:month', (req, res) => {
+blog.get('/archive/:year/:month', (req, res) => {
     const year = parseInt(req.params.year);
     const month = parseInt(req.params.month);
     const page = parseInt(req.query.page) || 1;
@@ -322,6 +333,7 @@ app.get('/archive/:year/:month', (req, res) => {
         currentMonth: month,
         monthName: monthNames[month - 1],
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
         user: USER,
         pagination: {
             current: page,
@@ -332,7 +344,7 @@ app.get('/archive/:year/:month', (req, res) => {
     });
 });
 
-app.get('/tag/:tag', (req, res) => {
+blog.get('/tag/:tag', (req, res) => {
     const tag = req.params.tag;
     const page = parseInt(req.query.page) || 1;
     const limit = 10;
@@ -351,6 +363,7 @@ app.get('/tag/:tag', (req, res) => {
         months,
         currentTag: tag,
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
         user: USER,
         pagination: {
             current: page,
@@ -361,7 +374,7 @@ app.get('/tag/:tag', (req, res) => {
     });
 });
 
-app.get('/p/:slug', (req, res) => {
+blog.get('/p/:slug', (req, res) => {
     const post = Posts.getBySlug(req.params.slug);
     
     if (!post) {
@@ -373,6 +386,7 @@ app.get('/p/:slug', (req, res) => {
         return res.status(404).render('404', {
             title: 'Not Found',
             baseUrl: BASE_URL,
+            blogPath: BLOG_PATH,
             user: USER
         });
     }
@@ -431,10 +445,14 @@ app.get('/p/:slug', (req, res) => {
         likes,
         shares,
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
         user: USER,
         activityPubId: `${BASE_URL}/p/${post.slug}`
     });
 });
+
+// Mount blog routes at BLOG_PATH (ActivityPub stays at root)
+app.use(BLOG_PATH, blog);
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -451,6 +469,7 @@ app.use((req, res) => {
     res.status(404).render('404', {
         title: 'Not Found',
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
         user: USER
     });
 });
