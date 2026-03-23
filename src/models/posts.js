@@ -89,7 +89,7 @@ class Posts {
         return Array.from(tagSet).sort();
     }
 
-    static getByTag(tag) {
+    static getByTag(tag, limit = 10, offset = 0) {
         // Use json_each to properly match exact tag in JSON array
         const stmt = db.prepare(`
             SELECT DISTINCT p.id, p.slug, p.title, p.excerpt, p.published_at, p.updated_at, p.tags,
@@ -100,11 +100,27 @@ class Posts {
             JOIN json_each(p.tags) AS j
             WHERE j.value = ?
             ORDER BY p.published_at DESC
+            LIMIT ? OFFSET ?
         `);
-        return stmt.all(tag).map(post => ({
+        return stmt.all(tag, limit, offset).map(post => ({
             ...post,
             tags: JSON.parse(post.tags || '[]')
         }));
+    }
+    
+    static count() {
+        const stmt = db.prepare('SELECT COUNT(*) as count FROM posts');
+        return stmt.get().count;
+    }
+    
+    static countByTag(tag) {
+        const stmt = db.prepare(`
+            SELECT COUNT(DISTINCT p.id) as count
+            FROM posts p
+            JOIN json_each(p.tags) AS j
+            WHERE j.value = ?
+        `);
+        return stmt.get(tag).count;
     }
 
     static getComments(postId) {

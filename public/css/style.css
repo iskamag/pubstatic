@@ -685,3 +685,52 @@ main {
     bottom: var(--spacing-sm);
     right: var(--spacing-sm);
 }
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.pagination-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.pagination-link:hover:not(.pagination-disabled) {
+    background: var(--accent-green);
+    color: white;
+    border-color: var(--accent-green);
+    transform: translateY(-1px);
+}
+
+.pagination-link.pagination-disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.pagination-info {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+@media (max-width: 600px) {
+    .pagination {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+}

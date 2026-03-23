@@ -264,7 +264,13 @@ app.get('/.well-known/webfinger', (req, res) => {
 
 // Frontend routes
 app.get('/', async (req, res) => {
-    const posts = Posts.getAll(10, 0);
+    const page = parseInt(req.query.page) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+    
+    const posts = Posts.getAll(limit, offset);
+    const totalPosts = Posts.count();
+    const totalPages = Math.ceil(totalPosts / limit);
     const tags = Posts.getTags();
     
     res.render('index', {
@@ -272,13 +278,25 @@ app.get('/', async (req, res) => {
         posts,
         tags,
         baseUrl: BASE_URL,
-        user: USER
+        user: USER,
+        pagination: {
+            current: page,
+            total: totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1
+        }
     });
 });
 
 app.get('/tag/:tag', (req, res) => {
     const tag = req.params.tag;
-    const posts = Posts.getByTag(tag);
+    const page = parseInt(req.query.page) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+    
+    const posts = Posts.getByTag(tag, limit, offset);
+    const totalPosts = Posts.countByTag(tag);
+    const totalPages = Math.ceil(totalPosts / limit);
     const allTags = Posts.getTags();
     
     res.render('tag', {
@@ -287,7 +305,13 @@ app.get('/tag/:tag', (req, res) => {
         tags: allTags,
         currentTag: tag,
         baseUrl: BASE_URL,
-        user: USER
+        user: USER,
+        pagination: {
+            current: page,
+            total: totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1
+        }
     });
 });
 

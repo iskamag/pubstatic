@@ -42,6 +42,22 @@
         </article>
         <% }); %>
     </div>
+    
+    <% if (pagination && (pagination.hasPrev || pagination.hasNext)) { %>
+    <nav class="pagination">
+        <% if (pagination.hasPrev) { %>
+        <a href="/tag/<%= currentTag %>?page=<%= pagination.current - 1 %>" class="pagination-link pagination-prev">← Newer</a>
+        <% } else { %>
+        <span class="pagination-link pagination-disabled">← Newer</span>
+        <% } %>
+        <span class="pagination-info">Page <%= pagination.current %> of <%= pagination.total %></span>
+        <% if (pagination.hasNext) { %>
+        <a href="/tag/<%= currentTag %>?page=<%= pagination.current + 1 %>" class="pagination-link pagination-next">Older →</a>
+        <% } else { %>
+        <span class="pagination-link pagination-disabled">Older →</span>
+        <% } %>
+    </nav>
+    <% } %>
 <% } %>
 
 <nav class="post-nav">
