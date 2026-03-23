@@ -2,11 +2,11 @@ const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
 const Posts = require('./models/posts');
+const { updateRSSFile } = require('./rss');
 
 const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', 'user-settings.json');
 const PFP_FILE = path.join(__dirname, '..', 'public', 'pfp.png');
-const RSS_FILE = path.join(__dirname, '..', 'public', 'feed.xml');
 
 // Ensure posts directory exists
 if (!fs.existsSync(POSTS_DIR)) {
@@ -18,54 +18,9 @@ function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Generate and save RSS feed
+// Update RSS feed - now uses shared rss module with caching
 function updateRSS() {
-    const posts = Posts.getAll(20, 0);
-    const { BASE_URL, USER } = require('./config');
-    const lastBuildDate = posts.length > 0
-        ? new Date(posts[0].published_at).toUTCString()
-        : new Date().toUTCString();
-
-    let items = '';
-    posts.forEach(post => {
-        const pubDate = new Date(post.published_at).toUTCString();
-        const link = `${BASE_URL}/p/${post.slug}`;
-        // Use excerpt for summary/description if available, otherwise use first 500 chars of content
-        const summary = post.excerpt
-            ? post.excerpt.replace(/<[^>]+>/g, '').substring(0, 500) + (post.excerpt.length > 500 ? '...' : '')
-            : (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 500) + (post.content.length > 500 ? '...' : '') : '');
-        // Full content - remove anchor links (href starting with #)
-        const content = (post.content || '').replace(/<a[^>]*href=["']#[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
-
-        items += `
-        <item>
-            <title><![CDATA[${post.title}]]></title>
-            <link>${link}</link>
-            <guid>${link}</guid>
-            <pubDate>${pubDate}</pubDate>
-            <description><![CDATA[${summary}]]></description>
-            <content:encoded><![CDATA[${content}]]></content:encoded>
-        </item>`;
-    });
-
-    const rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
-    <channel>
-        <title><![CDATA[${USER.name}]]></title>
-        <link>${BASE_URL}</link>
-        <description><![CDATA[${USER.summary}]]></description>
-        <language>en</language>
-        <lastBuildDate>${lastBuildDate}</lastBuildDate>
-        <atom:link href="${BASE_URL}/rss" rel="self" type="application/rss+xml" />${items}
-    </channel>
-</rss>`;
-
-    try {
-        fs.writeFileSync(RSS_FILE, rss);
-        console.log('[Watcher] RSS feed updated');
-    } catch (err) {
-        console.error('[Watcher] Error updating RSS feed:', err.message);
-    }
+    updateRSSFile();
 }
 
 // Lazy load activitypub to avoid circular dependency issues

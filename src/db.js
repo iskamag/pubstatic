@@ -95,6 +95,15 @@ db.exec(`
         inbox_url TEXT NOT NULL,
         followed_at TEXT NOT NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at);
+    CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
+    CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
+    CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
+    CREATE INDEX IF NOT EXISTS idx_comments_activity_id ON comments(activity_id);
+    CREATE INDEX IF NOT EXISTS idx_shares_post_id ON shares(post_id);
+    CREATE INDEX IF NOT EXISTS idx_followers_actor_id ON followers(actor_id);
+    CREATE INDEX IF NOT EXISTS idx_outbound_activities_delivered ON outbound_activities(delivered_at, delivery_attempts);
 `);
 
 // Migration: Add parent_id column to existing comments table

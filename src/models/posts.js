@@ -6,12 +6,15 @@ const crypto = require('crypto');
 class Posts {
     static getAll(limit = 10, offset = 0) {
         const stmt = db.prepare(`
-            SELECT id, slug, title, content, excerpt, published_at, updated_at, tags,
-                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
-                (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
-                (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count
-            FROM posts
-            ORDER BY published_at DESC
+            SELECT p.id, p.slug, p.title, p.content, p.excerpt, p.published_at, p.updated_at, p.tags,
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
+            FROM posts p
+            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
         `);
         return stmt.all(limit, offset).map(post => ({
@@ -22,12 +25,15 @@ class Posts {
 
     static getBySlug(slug) {
         const stmt = db.prepare(`
-            SELECT posts.*,
-                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
-                (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
-                (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count
-            FROM posts
-            WHERE slug = ?
+            SELECT p.*,
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
+            FROM posts p
+            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            WHERE p.slug = ?
         `);
         const post = stmt.get(slug);
         if (post) {
@@ -38,12 +44,15 @@ class Posts {
 
     static getById(id) {
         const stmt = db.prepare(`
-            SELECT posts.*,
-                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
-                (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
-                (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count
-            FROM posts
-            WHERE id = ?
+            SELECT p.*,
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
+            FROM posts p
+            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            WHERE p.id = ?
         `);
         const post = stmt.get(id);
         if (post) {
@@ -95,25 +104,27 @@ class Posts {
     }
 
     static getTags() {
-        const stmt = db.prepare('SELECT tags FROM posts');
-        const allTags = stmt.all();
-        const tagSet = new Set();
-        allTags.forEach(row => {
-            const tags = JSON.parse(row.tags || '[]');
-            tags.forEach(tag => tagSet.add(tag));
-        });
-        return Array.from(tagSet).sort();
+        const stmt = db.prepare(`
+            SELECT DISTINCT j.value as tag
+            FROM posts
+            JOIN json_each(posts.tags) AS j
+            WHERE j.value IS NOT NULL AND j.value != ''
+            ORDER BY j.value
+        `);
+        return stmt.all().map(row => row.tag);
     }
 
     static getByTag(tag, limit = 10, offset = 0) {
-        // Use json_each to properly match exact tag in JSON array
         const stmt = db.prepare(`
             SELECT DISTINCT p.id, p.slug, p.title, p.excerpt, p.published_at, p.updated_at, p.tags,
-                (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count,
-                (SELECT COUNT(*) FROM shares WHERE post_id = p.id) as shares_count
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
             FROM posts p
             JOIN json_each(p.tags) AS j
+            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
             WHERE j.value = ?
             ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
@@ -146,13 +157,16 @@ class Posts {
             : `${year}-${String(month + 1).padStart(2, '0')}-01`;
         
         const stmt = db.prepare(`
-            SELECT id, slug, title, content, excerpt, published_at, updated_at, tags,
-                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
-                (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
-                (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count
-            FROM posts
-            WHERE published_at >= ? AND published_at < ?
-            ORDER BY published_at DESC
+            SELECT p.id, p.slug, p.title, p.content, p.excerpt, p.published_at, p.updated_at, p.tags,
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
+            FROM posts p
+            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            WHERE p.published_at >= ? AND p.published_at < ?
+            ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
         `);
         return stmt.all(startDate, endDate, limit, offset).map(post => ({
