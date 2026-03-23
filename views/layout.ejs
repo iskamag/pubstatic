@@ -16,7 +16,28 @@
     </header>
 
     <main class="container">
-        <%- body %>
+        <div class="content-wrapper">
+            <div class="content-main">
+                <%- body %>
+            </div>
+            <% if (typeof months !== 'undefined' && months.length > 0) { %>
+            <aside class="content-sidebar">
+                <div class="archive-widget">
+                    <h3>Archives</h3>
+                    <ul class="archive-list">
+                        <% months.forEach(m => { %>
+                            <li>
+                                <a href="/archive/<%= m.year %>/<%= String(m.month).padStart(2, '0') %>" class="archive-link">
+                                    <%= new Date(m.year, m.month - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) %>
+                                    <span class="archive-count">(<%= m.count %>)</span>
+                                </a>
+                            </li>
+                        <% }); %>
+                    </ul>
+                </div>
+            </aside>
+        <% } %>
+        </div>
     </main>
 
     <footer class="site-footer">

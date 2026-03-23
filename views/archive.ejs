@@ -1,0 +1,67 @@
+<section class="hero">
+    <h1><%= monthName %> <%= year %></h1>
+    <% if (tags.length > 0) { %>
+    <nav class="tags-nav">
+        <span class="tags-label">Tags:</span>
+        <% tags.forEach(tag => { %>
+        <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+        <% }); %>
+    </nav>
+    <% } %>
+</section>
+
+<% if (posts.length === 0) { %>
+    <div class="empty-state">
+        <p>No posts found for this month.</p>
+    </div>
+<% } else { %>
+    <div class="posts-list">
+        <% posts.forEach(post => { %>
+        <article class="post-card" id="post-<%= post.id %>">
+            <h2 class="post-title">
+                <a href="/p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
+            </h2>
+            <time class="post-date" datetime="<%= post.published_at %>">
+                <%= new Date(post.published_at).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                }) %>
+            </time>
+            <p class="post-excerpt"><%= post.excerpt %></p>
+            <% if (post.tags.length > 0) { %>
+            <div class="post-tags">
+                <% post.tags.forEach(tag => { %>
+                <a href="/tag/<%= tag %>" class="tag">#<%= tag %></a>
+                <% }); %>
+            </div>
+            <% } %>
+            <div class="post-stats">
+                <span class="stat">❤️ <%= post.likes_count %></span>
+                <span class="stat">💬 <%= post.comments_count %></span>
+                <span class="stat">🔄 <%= post.shares_count %></span>
+            </div>
+        </article>
+        <% }); %>
+    </div>
+    
+    <% if (pagination && (pagination.hasPrev || pagination.hasNext)) { %>
+    <nav class="pagination">
+        <% if (pagination.hasPrev) { %>
+        <a href="/archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current - 1 %>" class="pagination-link pagination-prev">← Newer</a>
+        <% } else { %>
+        <span class="pagination-link pagination-disabled">← Newer</span>
+        <% } %>
+        <span class="pagination-info">Page <%= pagination.current %> of <%= pagination.total %></span>
+        <% if (pagination.hasNext) { %>
+        <a href="/archive/<%= currentYear %>/<%= currentMonth %>?page=<%= pagination.current + 1 %>" class="pagination-link pagination-next">Older →</a>
+        <% } else { %>
+        <span class="pagination-link pagination-disabled">Older →</span>
+        <% } %>
+    </nav>
+    <% } %>
+<% } %>
+
+<nav class="post-nav">
+    <a href="/" class="back-link">← Back to all posts</a>
+</nav>

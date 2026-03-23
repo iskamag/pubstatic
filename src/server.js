@@ -272,11 +272,55 @@ app.get('/', async (req, res) => {
     const totalPosts = Posts.count();
     const totalPages = Math.ceil(totalPosts / limit);
     const tags = Posts.getTags();
+    const months = Posts.getMonths();
     
     res.render('index', {
         title: USER.name,
         posts,
         tags,
+        months,
+        baseUrl: BASE_URL,
+        user: USER,
+        pagination: {
+            current: page,
+            total: totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1
+        }
+    });
+});
+
+app.get('/archive/:year/:month', (req, res) => {
+    const year = parseInt(req.params.year);
+    const month = parseInt(req.params.month);
+    const page = parseInt(req.query.page) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+    
+    if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).render('error', {
+            title: 'Invalid Date',
+            message: 'Invalid year or month'
+        });
+    }
+    
+    const posts = Posts.getByMonth(year, month, limit, offset);
+    const totalPosts = Posts.countByMonth(year, month);
+    const totalPages = Math.ceil(totalPosts / limit);
+    const tags = Posts.getTags();
+    const months = Posts.getMonths();
+    
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    res.render('archive', {
+        title: `${monthNames[month - 1]} ${year} - ${USER.name}`,
+        posts,
+        tags,
+        months,
+        currentYear: year,
+        currentMonth: month,
+        monthName: monthNames[month - 1],
         baseUrl: BASE_URL,
         user: USER,
         pagination: {
@@ -298,11 +342,13 @@ app.get('/tag/:tag', (req, res) => {
     const totalPosts = Posts.countByTag(tag);
     const totalPages = Math.ceil(totalPosts / limit);
     const allTags = Posts.getTags();
+    const months = Posts.getMonths();
     
     res.render('tag', {
         title: `Tag: ${tag} - ${USER.name}`,
         posts,
         tags: allTags,
+        months,
         currentTag: tag,
         baseUrl: BASE_URL,
         user: USER,

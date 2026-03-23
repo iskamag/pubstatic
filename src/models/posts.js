@@ -122,6 +122,59 @@ class Posts {
         `);
         return stmt.get(tag).count;
     }
+    
+    static getByMonth(year, month, limit = 10, offset = 0) {
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = month === 12 
+            ? `${year + 1}-01-01` 
+            : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        
+        const stmt = db.prepare(`
+            SELECT id, slug, title, content, excerpt, published_at, updated_at, tags,
+                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) as likes_count,
+                (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) as comments_count,
+                (SELECT COUNT(*) FROM shares WHERE post_id = posts.id) as shares_count
+            FROM posts
+            WHERE published_at >= ? AND published_at < ?
+            ORDER BY published_at DESC
+            LIMIT ? OFFSET ?
+        `);
+        return stmt.all(startDate, endDate, limit, offset).map(post => ({
+            ...post,
+            tags: JSON.parse(post.tags || '[]')
+        }));
+    }
+    
+    static countByMonth(year, month) {
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = month === 12 
+            ? `${year + 1}-01-01` 
+            : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM posts
+            WHERE published_at >= ? AND published_at < ?
+        `);
+        return stmt.get(startDate, endDate).count;
+    }
+    
+    static getMonths() {
+        const stmt = db.prepare(`
+            SELECT DISTINCT 
+                strftime('%Y', published_at) as year,
+                strftime('%m', published_at) as month,
+                COUNT(*) as count
+            FROM posts
+            GROUP BY year, month
+            ORDER BY year DESC, month DESC
+        `);
+        return stmt.all().map(row => ({
+            year: parseInt(row.year),
+            month: parseInt(row.month),
+            count: row.count
+        }));
+    }
 
     static getComments(postId) {
         const stmt = db.prepare(`
