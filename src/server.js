@@ -451,6 +451,18 @@ blog.get('/p/:slug', (req, res) => {
     });
 });
 
+// Embeddable "new posts" endpoint - shows latest posts in condensed format
+blog.get('/new', (req, res) => {
+    const posts = Posts.getAll(3, 0);
+    
+    res.render('embed', {
+        title: `${USER.name} - Latest Posts`,
+        posts,
+        baseUrl: BASE_URL,
+        user: USER
+    });
+});
+
 // Mount blog routes at BLOG_PATH (ActivityPub stays at root)
 app.use(BLOG_PATH, blog);
 
