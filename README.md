@@ -33,6 +33,7 @@ Create a `.env` file or set environment variables:
 | `DISPLAY_NAME` | `Blog Admin` | Display name shown on profile |
 | `BIO` | `A minimalist ActivityPub blog` | Profile bio |
 | `DEBUG_AP` | `false` | Enable verbose ActivityPub logging |
+| `BLOG_PATH` | `/` | Blog UI path (e.g., `/posts/` for integration with existing static sites) |
 
 ### Debugging ActivityPub
 
@@ -103,6 +104,7 @@ ActivityPub comments support:
 | `/p/:slug` | GET | Post (HTML or ActivityPub JSON) |
 | `/p/:slug/likes` | GET | Likes collection |
 | `/p/:slug/shares` | GET | Shares collection |
+| `/p/new` | GET | Embeddable latest posts (for iframe embedding) |
 | `/rss.xml` | GET | RSS feed |
 
 ## Development
@@ -123,7 +125,57 @@ The server watches `content/posts/` for file changes and automatically:
 - Queues ActivityPub Create/Update activities for federation
 - Removes posts when files are deleted
 
-## Production Setup
+## Embedding Latest Posts
+
+The `/p/new` endpoint provides a condensed, self-contained HTML page showing the 3 latest posts. It's designed to be embedded in other websites via iframe:
+
+```html
+<iframe src="https://yourblog.com/p/new" width="100%" height="300" loading="lazy"></iframe>
+```
+
+Features:
+- Condensed format: title, date, excerpt (2-line clamp), interactions
+- Self-contained styling with light/dark mode support
+- Transparent background for seamless integration
+- Responsive width
+
+## Integrating with Existing Static Sites
+
+The blog can run alongside an existing static website. Set `BLOG_PATH` to serve the blog UI from a sub-path while ActivityPub endpoints remain at root:
+
+```bash
+BLOG_PATH=/posts npm start
+```
+
+Then configure nginx to proxy requests:
+
+```nginx
+# Static website at root
+location / {
+    root /var/www/html;
+    try_files $uri $uri/ =404;
+}
+
+# Blog UI at /posts/
+location /posts/ {
+    proxy_pass http://localhost:6767;
+    proxy_set_header Host $host;
+}
+
+# ActivityPub actor and inbox/outbox at root
+location /u/ {
+    proxy_pass http://localhost:6767;
+    proxy_set_header Host $host;
+}
+
+# WebFinger (only this, not all .well-known)
+location /.well-known/webfinger {
+    proxy_pass http://localhost:6767;
+    proxy_set_header Host $host;
+}
+```
+
+See `nginx-blog.example.conf` for a complete configuration including `/p/:slug/likes`, `/p/:slug/shares`, RSS, and static assets.
 
 1. Set `PROTOCOL=https` in environment
 2. Use a reverse proxy (nginx, Caddy, etc.) with SSL
