@@ -15,6 +15,16 @@ function pfpUrl() {
     return `${BLOG_ROOT}/pfp.png`;
 }
 
+// Rate limiting configuration
+const RATE_LIMIT = {
+    // Time window in milliseconds
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute default
+    // Maximum requests per window per IP
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+    // Enable or disable rate limiting (set to 'false' to disable)
+    enabled: process.env.RATE_LIMIT_ENABLED !== 'false'
+};
+
 module.exports = {
     DOMAIN,
     USERNAME,
@@ -23,6 +33,7 @@ module.exports = {
     BASE_URL,
     BLOG_PATH,
     BLOG_ROOT,
+    RATE_LIMIT,
     ACTOR_URL: `${BLOG_ROOT}/u/${USERNAME}`,
     USER: {
         preferredUsername: USERNAME,

@@ -34,6 +34,9 @@ Create a `.env` file or set environment variables:
 | `BIO` | `A minimalist ActivityPub blog` | Profile bio |
 | `DEBUG_AP` | `false` | Enable verbose ActivityPub logging |
 | `BLOG_PATH` | `/` | Blog UI path (e.g., `/posts/` for integration with existing static sites) |
+| `RATE_LIMIT_ENABLED` | `true` | Enable/disable rate limiting on inbox |
+| `RATE_LIMIT_MAX` | `100` | Max requests per window per IP |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in milliseconds |
 
 ### Debugging ActivityPub
 
@@ -47,7 +50,61 @@ This logs:
 - Incoming request headers and bodies
 - Activity processing details
 - Parent comment resolution steps
-- Signature verification
+- HTTP Signature verification details (protocol, host, signing string, algorithm used)
+- Key object creation (type and algorithm)
+- Actor URL fetching
+
+## Security
+
+### HTTP Signature Verification
+
+All incoming activities require valid HTTP signatures. The server verifies:
+
+1. **Signature validity** - The signature must match the actor's public key
+2. **Actor ownership** - The activity's actor must match the signature's key owner
+3. **Digest verification** - Request body digest must match (when present)
+
+Supported signature algorithms:
+- RSA-SHA256, RSA-SHA512 (Mastodon, Pleroma)
+- Ed25519 (GoToSocial, Pixelfed)
+- ECDSA with P-256, P-384, P-521 curves
+
+### Undo Activity Protection
+
+Undo requests (for likes, shares, follows) are verified to ensure the requesting actor owns the original activity. Malicious actors cannot delete another user's likes or follows.
+
+### SSRF Protection
+
+Actor URLs and inbox URLs are validated before fetching to prevent Server-Side Request Forgery:
+
+- Blocks localhost (127.0.0.1, ::1)
+- Blocks private IP ranges (10.x, 172.16-31.x, 192.168.x)
+- Blocks cloud metadata endpoints (169.254.x.x)
+- Blocks internal TLDs (.local, .internal, .localhost)
+- Blocks IPv6 addresses
+- Only allows HTTP/HTTPS protocols
+
+### Rate Limiting
+
+The inbox endpoint is rate-limited to prevent abuse and denial-of-service attacks. Configuration:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_ENABLED` | `true` | Set to `false` to disable (e.g., if using reverse proxy rate limiting) |
+| `RATE_LIMIT_MAX` | `100` | Maximum requests per window per IP |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Time window in milliseconds (default: 1 minute) |
+
+Example: To allow 200 requests per 5 minutes:
+
+```bash
+RATE_LIMIT_MAX=200 RATE_LIMIT_WINDOW_MS=300000
+```
+
+To disable rate limiting (when using nginx/Cloudflare rate limiting):
+
+```bash
+RATE_LIMIT_ENABLED=false
+```
 
 ## Creating Posts
 
@@ -212,3 +269,25 @@ If Mastodon can fetch your posts but not send likes/comments:
    DELETE FROM unavailable_domains WHERE domain = 'yourdomain.com';
    ```
 3. New followers should work immediately after clearing
+
+### Signature Verification Failing
+
+If activities are being rejected with 401 errors:
+1. Ensure `PROTOCOL=https` and `X-Forwarded-Proto` header is set by your reverse proxy
+2. Enable debug logging: `DEBUG_AP=true npm start`
+3. Check the logged signing string matches what the sending server expects
+4. Verify the actor URL is accessible and returns a valid public key
+5. Some servers use different header orders - check the `headers` field in the Signature header
+
+### Testing with curl
+
+To test signature verification manually:
+
+```bash
+# Generate a key pair
+openssl genrsa -out private.pem 2048
+openssl rsa -in private.pem -pubout -out public.pem
+
+# Create a signed request (see HTTP Signatures spec)
+# Your server logs will show the signing string when DEBUG_AP=true
+```

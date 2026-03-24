@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
-const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, BLOG_ROOT, USER } = require('../config');
+const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, BLOG_ROOT, USER, RATE_LIMIT } = require('../config');
 const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('../urls');
 const Posts = require('../models/posts');
 const db = require('../db');
@@ -14,21 +14,24 @@ const router = express.Router();
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
 
 // Rate limiting for inbox endpoint
-const INBOX_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const INBOX_RATE_LIMIT_MAX_REQUESTS = 100; // max requests per window per IP
 const inboxRateLimits = new Map(); // IP -> { count, resetTime }
 
 function checkInboxRateLimit(req) {
+    // Skip rate limiting if disabled
+    if (!RATE_LIMIT.enabled) {
+        return { allowed: true, remaining: Infinity };
+    }
+    
     const ip = req.ip || req.connection.remoteAddress || 'unknown';
     const now = Date.now();
     const entry = inboxRateLimits.get(ip);
     
     if (!entry || now > entry.resetTime) {
-        inboxRateLimits.set(ip, { count: 1, resetTime: now + INBOX_RATE_LIMIT_WINDOW_MS });
-        return { allowed: true, remaining: INBOX_RATE_LIMIT_MAX_REQUESTS - 1 };
+        inboxRateLimits.set(ip, { count: 1, resetTime: now + RATE_LIMIT.windowMs });
+        return { allowed: true, remaining: RATE_LIMIT.maxRequests - 1 };
     }
     
-    if (entry.count >= INBOX_RATE_LIMIT_MAX_REQUESTS) {
+    if (entry.count >= RATE_LIMIT.maxRequests) {
         return { 
             allowed: false, 
             remaining: 0,
@@ -37,18 +40,20 @@ function checkInboxRateLimit(req) {
     }
     
     entry.count++;
-    return { allowed: true, remaining: INBOX_RATE_LIMIT_MAX_REQUESTS - entry.count };
+    return { allowed: true, remaining: RATE_LIMIT.maxRequests - entry.count };
 }
 
-// Clean up expired rate limit entries every 5 minutes
-setInterval(() => {
-    const now = Date.now();
-    for (const [ip, entry] of inboxRateLimits) {
-        if (now > entry.resetTime) {
-            inboxRateLimits.delete(ip);
+// Clean up expired rate limit entries periodically
+if (RATE_LIMIT.enabled) {
+    setInterval(() => {
+        const now = Date.now();
+        for (const [ip, entry] of inboxRateLimits) {
+            if (now > entry.resetTime) {
+                inboxRateLimits.delete(ip);
+            }
         }
-    }
-}, 5 * 60 * 1000);
+    }, RATE_LIMIT.windowMs * 5); // Clean up every 5 windows
+}
 
 const KEYS_FILE = path.join(__dirname, '..', '..', 'data', 'keys.json');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', '..', 'user-settings.json');
