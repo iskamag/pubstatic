@@ -748,20 +748,30 @@ function parseSignatureHeader(signatureHeader) {
 function normalizeToKeyObject(keyData) {
     if (!keyData) return null;
     
-    if (keyData.includes('-----BEGIN PUBLIC KEY-----') || 
-        keyData.includes('-----BEGIN RSA PUBLIC KEY-----')) {
-        return crypto.createPublicKey(keyData);
-    }
+    const trimmedKey = keyData.trim();
     
-    if (keyData.includes('-----BEGIN CERTIFICATE-----')) {
-        const certMatch = keyData.match(/-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/);
-        if (certMatch) {
-            return crypto.createPublicKey(certMatch[0]);
+    if (trimmedKey.includes('-----BEGIN PUBLIC KEY-----') || 
+        trimmedKey.includes('-----BEGIN RSA PUBLIC KEY-----')) {
+        try {
+            return crypto.createPublicKey(trimmedKey);
+        } catch (e) {
+            console.warn('[ActivityPub] Failed to create key from PEM:', e.message);
         }
     }
     
-    const base64Key = keyData.replace(/\s/g, '');
-    if (/^[A-Za-z0-9+/]+=*$/.test(base64Key)) {
+    if (trimmedKey.includes('-----BEGIN CERTIFICATE-----')) {
+        const certMatch = trimmedKey.match(/-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/);
+        if (certMatch) {
+            try {
+                return crypto.createPublicKey(certMatch[0]);
+            } catch (e) {
+                console.warn('[ActivityPub] Failed to create key from certificate:', e.message);
+            }
+        }
+    }
+    
+    const base64Key = trimmedKey.replace(/\s/g, '');
+    if (/^[A-Za-z0-9+/\-_]+=*$/.test(base64Key)) {
         if (base64Key.startsWith('MII') || base64Key.startsWith('MIIBIjANBg')) {
             const pem = `-----BEGIN PUBLIC KEY-----\n${base64Key}\n-----END PUBLIC KEY-----`;
             try {
@@ -888,6 +898,7 @@ async function verifyHttpSignature(req) {
             return { valid: false, error: 'Actor has no public key' };
         }
         
+        console.log('[ActivityPub] Successfully created public key object, type:', publicKeyObject.type, 'asymmetricKeyType:', publicKeyObject.asymmetricKeyType);
         // Verify digest if present
         if (digestHeader) {
             const digestMatch = digestHeader.match(/^(SHA-256|sha-256)=(.+)$/i);
@@ -909,8 +920,12 @@ async function verifyHttpSignature(req) {
         // Handle both space and comma-separated headers
         const headersList = headers.split(/[\s,]+/).filter(h => h.length > 0);
         
-        const urlObj = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        const proto = req.get('x-forwarded-proto') || req.protocol;
+        const host = req.get('host');
+        const urlObj = new URL(`${proto}://${host}${req.originalUrl}`);
         const requestTarget = `${req.method.toLowerCase()} ${urlObj.pathname}`;
+        
+        console.log('[ActivityPub] Protocol:', proto, 'Host:', host, 'Path:', urlObj.pathname);
         
         const signingParts = [];
         for (const header of headersList) {
