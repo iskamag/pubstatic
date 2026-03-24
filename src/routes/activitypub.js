@@ -140,14 +140,8 @@ router.get('/u/:username', (req, res) => {
     // Load user settings from JSON file
     const userSettings = loadUserSettings();
     
-    // Determine avatar URL: use settings override, or check for pfp.png, or use default
-    let avatarUrl = userSettings.avatar_url;
-    if (!avatarUrl && fs.existsSync(PFP_FILE)) {
-        avatarUrl = `${BASE_URL}/pfp.png`;
-    }
-    if (!avatarUrl) {
-        avatarUrl = USER.icon;
-    }
+    // Determine avatar URL: use settings override, or USER.icon (which includes BLOG_PATH)
+    let avatarUrl = userSettings.avatar_url || USER.icon;
     
     const actor = {
         '@context': [
