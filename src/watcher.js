@@ -169,17 +169,13 @@ function handleUserSettingsChange() {
     try {
         const userSettings = loadUserSettings();
         
-        // Determine avatar URL
-        let avatarUrl = userSettings.avatar_url;
-        if (!avatarUrl && fs.existsSync(PFP_FILE)) {
-            const { BASE_URL } = require('./config');
-            avatarUrl = `${BASE_URL}/pfp.png`;
-        }
+        // Determine avatar URL - use USER.icon which already handles BLOG_PATH
+        const { USERNAME, USER } = require('./config');
+        let avatarUrl = userSettings.avatar_url || USER.icon;
         
         // Queue actor update for federation
         const activitypub = getActivityPub();
         if (activitypub.queueActorUpdate) {
-            const { USERNAME, USER } = require('./config');
             activitypub.queueActorUpdate({
                 preferredUsername: USERNAME,
                 name: userSettings.display_name || USER.name,
