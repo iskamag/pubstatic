@@ -39,6 +39,7 @@ app.set('layout', 'layout');
 // Static files
 app.use('/static', express.static(path.join(__dirname, '..', 'public')));
 app.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
+app.use('/static.css', express.static(path.join(__dirname, '..', 'public', 'static.css')));
 
 // Body parsing - for ActivityPub we need raw body for signature verification
 app.use(express.json({

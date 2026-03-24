@@ -100,7 +100,7 @@ test.describe('Blog Frontend', () => {
         
         // Check for stylesheet link
         const stylesheet = await page.locator('link[rel="stylesheet"]').first();
-        await expect(stylesheet).toHaveAttribute('href', /style\.css/);
+        await expect(stylesheet).toHaveAttribute('href', /static\.css/);
     });
 });
 
