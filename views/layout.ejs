@@ -1,3 +1,4 @@
+<% const bp = typeof blogPath !== 'undefined' ? blogPath + '/' : '/'; %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +11,7 @@
 <body>
     <header class="site-header">
         <div class="container">
-            <a href="<%= blogPath ? blogPath + '/' : '/' %>" class="site-title"><%= user.name %></a>
+            <a href="<%= bp %>" class="site-title"><%= user.name %></a>
             <p class="site-description"><%= user.summary %></p>
         </div>
     </header>
@@ -27,7 +28,7 @@
                     <ul class="archive-list">
                         <% months.forEach(m => { %>
                             <li>
-                                <a href="<%= blogPath ? blogPath + '/' : '/' %>archive/<%= m.year %>/<%= String(m.month).padStart(2, '0') %>" class="archive-link">
+                                <a href="<%= bp %>archive/<%= m.year %>/<%= String(m.month).padStart(2, '0') %>" class="archive-link">
                                     <%= new Date(m.year, m.month - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) %>
                                     <span class="archive-count">(<%= m.count %>)</span>
                                 </a>
