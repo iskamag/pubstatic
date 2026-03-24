@@ -7,6 +7,7 @@ const Posts = require('./models/posts');
 const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
 const { getRSS } = require('./rss');
+const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('./urls');
 const db = require('./db');
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
@@ -361,33 +362,33 @@ blog.get('/p/:slug', (req, res) => {
         // Return ActivityPub JSON representation
         const article = {
             '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
-            id: `${BASE_URL}/p/${post.slug}`,
+            id: postUrl(post.slug),
             type: 'Article',
             attributedTo: ACTOR_URL,
             name: post.title,
             content: post.content,
             published: post.published_at,
             updated: post.updated_at,
-            url: `${BASE_URL}/p/${post.slug}`,
+            url: postUrl(post.slug),
             to: ['https://www.w3.org/ns/activitystreams#Public'],
             cc: [`${BASE_URL}/u/${USERNAME}/followers`],
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
-                href: `${BASE_URL}/tag/${tag}`
+                href: tagUrl(tag)
             })),
             likes: {
-                id: `${BASE_URL}/p/${post.slug}/likes`,
+                id: postLikesUrl(post.slug),
                 type: 'OrderedCollection',
                 totalItems: post.likes_count ||0
             },
             shares: {
-                id: `${BASE_URL}/p/${post.slug}/shares`,
+                id: postSharesUrl(post.slug),
                 type: 'OrderedCollection',
                 totalItems: post.shares_count || 0
             },
             replies: {
-                id: `${BASE_URL}/p/${post.slug}/replies`,
+                id: postRepliesUrl(post.slug),
                 type: 'Collection',
                 totalItems: post.comments_count || 0
             }
@@ -411,7 +412,7 @@ blog.get('/p/:slug', (req, res) => {
         baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
         user: USER,
-        activityPubId: `${BASE_URL}${BLOG_PATH}/p/${post.slug}`
+        activityPubId: postUrl(post.slug)
     });
 });
 

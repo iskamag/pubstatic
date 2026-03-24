@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
 const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, USER } = require('../config');
+const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl, BLOG_ROOT } = require('../urls');
 const Posts = require('../models/posts');
 const db = require('../db');
 const { marked } = require('marked');
@@ -186,36 +187,36 @@ router.get('/u/:username/outbox', (req, res) => {
     
     const posts = Posts.getAll(20, 0);
     const orderedItems = posts.map(post => ({
-        id: `${BASE_URL}/p/${post.slug}#activity`,
+        id: `${postUrl(post.slug)}#activity`,
         type: 'Create',
         actor: ACTOR_URL,
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
         object: {
-            id: `${BASE_URL}/p/${post.slug}`,
+            id: postUrl(post.slug),
             type: 'Article',
             attributedTo: ACTOR_URL,
             content: post.content,
             name: post.title,
             published: post.published_at,
             updated: post.updated_at,
-            url: `${BASE_URL}/p/${post.slug}`,
+            url: postUrl(post.slug),
             to: ['https://www.w3.org/ns/activitystreams#Public'],
             cc: [USER.followers],
             likes: {
-                id: `${BASE_URL}/p/${post.slug}/likes`,
+                id: postLikesUrl(post.slug),
                 type: 'OrderedCollection',
                 totalItems: post.likes_count || 0
             },
             shares: {
-                id: `${BASE_URL}/p/${post.slug}/shares`,
+                id: postSharesUrl(post.slug),
                 type: 'OrderedCollection',
                 totalItems: post.shares_count || 0
             },
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
-                href: `${BASE_URL}/tag/${tag}`
+                href: tagUrl(tag)
             }))
         }
     }));
@@ -649,16 +650,16 @@ router.get('/p/:slug/likes', (req, res) => {
     const likes = Posts.getLikes(post.id);
     const orderedItems = likes.map(like => ({
         type: 'Like',
-        id: like.activity_id || `${BASE_URL}/p/${post.slug}/likes/${like.id}`,
+        id: like.activity_id || `${postLikesUrl(post.slug)}/${like.id}`,
         actor: like.actor_url || like.actor_id,
-        object: `${BASE_URL}/p/${post.slug}`,
+        object: postUrl(post.slug),
         published: like.created_at
     }));
     
     res.set('Content-Type', 'application/activity+json');
     res.json({
         '@context': 'https://www.w3.org/ns/activitystreams',
-        id: `${BASE_URL}/p/${post.slug}/likes`,
+        id: postLikesUrl(post.slug),
         type: 'OrderedCollection',
         totalItems: likes.length,
         orderedItems
@@ -676,16 +677,16 @@ router.get('/p/:slug/shares', (req, res) => {
     const shares = Posts.getShares(post.id);
     const orderedItems = shares.map(share => ({
         type: 'Announce',
-        id: share.activity_id || `${BASE_URL}/p/${post.slug}/shares/${share.id}`,
+        id: share.activity_id || `${postSharesUrl(post.slug)}/${share.id}`,
         actor: share.actor_url || share.actor_id,
-        object: `${BASE_URL}/p/${post.slug}`,
+        object: postUrl(post.slug),
         published: share.created_at
     }));
     
     res.set('Content-Type', 'application/activity+json');
     res.json({
         '@context': 'https://www.w3.org/ns/activitystreams',
-        id: `${BASE_URL}/p/${post.slug}/shares`,
+        id: postSharesUrl(post.slug),
         type: 'OrderedCollection',
         totalItems: shares.length,
         orderedItems
@@ -1051,30 +1052,30 @@ async function processOutboundActivities() {
 // Queue an Update activity for a post
 function queuePostUpdate(post) {
     const article = {
-        id: `${BASE_URL}/p/${post.slug}`,
+        id: postUrl(post.slug),
         type: 'Article',
         attributedTo: ACTOR_URL,
         content: post.content,
         name: post.title,
         published: post.published_at,
         updated: post.updated_at,
-        url: `${BASE_URL}/p/${post.slug}`,
+        url: postUrl(post.slug),
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
         likes: {
-            id: `${BASE_URL}/p/${post.slug}/likes`,
+            id: postLikesUrl(post.slug),
             type: 'OrderedCollection',
             totalItems: post.likes_count || 0
         },
         shares: {
-            id: `${BASE_URL}/p/${post.slug}/shares`,
+            id: postSharesUrl(post.slug),
             type: 'OrderedCollection',
             totalItems: post.shares_count || 0
         },
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,
-            href: `${BASE_URL}/tag/${tag}`
+            href: tagUrl(tag)
         }))
     };
     
@@ -1084,29 +1085,29 @@ function queuePostUpdate(post) {
 // Queue a Create activity for a new post
 function queuePostCreate(post) {
     const article = {
-        id: `${BASE_URL}/p/${post.slug}`,
+        id: postUrl(post.slug),
         type: 'Article',
         attributedTo: ACTOR_URL,
         content: post.content,
         name: post.title,
         published: post.published_at,
-        url: `${BASE_URL}/p/${post.slug}`,
+        url: postUrl(post.slug),
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
         likes: {
-            id: `${BASE_URL}/p/${post.slug}/likes`,
+            id: postLikesUrl(post.slug),
             type: 'OrderedCollection',
             totalItems: 0
         },
         shares: {
-            id: `${BASE_URL}/p/${post.slug}/shares`,
+            id: postSharesUrl(post.slug),
             type: 'OrderedCollection',
             totalItems: 0
         },
         tag: post.tags.map(tag => ({
             type: 'Hashtag',
             name: `#${tag}`,
-            href: `${BASE_URL}/tag/${tag}`
+            href: tagUrl(tag)
         }))
     };
     

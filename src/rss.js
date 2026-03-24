@@ -1,6 +1,7 @@
 const Posts = require('./models/posts');
 const fs = require('fs');
 const path = require('path');
+const { postUrl, BLOG_ROOT } = require('./urls');
 
 const RSS_FILE = path.join(__dirname, '..', 'public', 'feed.xml');
 
@@ -8,7 +9,7 @@ let rssCache = null;
 
 function generateRSS() {
     const posts = Posts.getAll(20, 0);
-    const { BASE_URL, USER } = require('./config');
+    const { USER } = require('./config');
     const lastBuildDate = posts.length > 0
         ? new Date(posts[0].published_at).toUTCString()
         : new Date().toUTCString();
@@ -16,7 +17,7 @@ function generateRSS() {
     let items = '';
     posts.forEach(post => {
         const pubDate = new Date(post.published_at).toUTCString();
-        const link = `${BASE_URL}/p/${post.slug}`;
+        const link = postUrl(post.slug);
         const summary = post.excerpt
             ? post.excerpt.replace(/<[^>]+>/g, '').substring(0, 500) + (post.excerpt.length > 500 ? '...' : '')
             : (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 500) + (post.content.length > 500 ? '...' : '') : '');
@@ -37,11 +38,11 @@ function generateRSS() {
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
     <channel>
         <title><![CDATA[${USER.name}]]></title>
-        <link>${BASE_URL}</link>
+        <link>${BLOG_ROOT}</link>
         <description><![CDATA[${USER.summary}]]></description>
         <language>en</language>
         <lastBuildDate>${lastBuildDate}</lastBuildDate>
-        <atom:link href="${BASE_URL}/rss" rel="self" type="application/rss+xml" />${items}
+        <atom:link href="${BLOG_ROOT}/rss" rel="self" type="application/rss+xml" />${items}
     </channel>
 </rss>`;
 }
