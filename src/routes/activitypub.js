@@ -13,6 +13,43 @@ const router = express.Router();
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
 
+// Rate limiting for inbox endpoint
+const INBOX_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const INBOX_RATE_LIMIT_MAX_REQUESTS = 100; // max requests per window per IP
+const inboxRateLimits = new Map(); // IP -> { count, resetTime }
+
+function checkInboxRateLimit(req) {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = inboxRateLimits.get(ip);
+    
+    if (!entry || now > entry.resetTime) {
+        inboxRateLimits.set(ip, { count: 1, resetTime: now + INBOX_RATE_LIMIT_WINDOW_MS });
+        return { allowed: true, remaining: INBOX_RATE_LIMIT_MAX_REQUESTS - 1 };
+    }
+    
+    if (entry.count >= INBOX_RATE_LIMIT_MAX_REQUESTS) {
+        return { 
+            allowed: false, 
+            remaining: 0,
+            resetTime: entry.resetTime 
+        };
+    }
+    
+    entry.count++;
+    return { allowed: true, remaining: INBOX_RATE_LIMIT_MAX_REQUESTS - entry.count };
+}
+
+// Clean up expired rate limit entries every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of inboxRateLimits) {
+        if (now > entry.resetTime) {
+            inboxRateLimits.delete(ip);
+        }
+    }
+}, 5 * 60 * 1000);
+
 const KEYS_FILE = path.join(__dirname, '..', '..', 'data', 'keys.json');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', '..', 'user-settings.json');
 const PFP_FILE = path.join(__dirname, '..', '..', 'public', 'pfp.png');
@@ -132,6 +169,43 @@ function escapeHtml(str) {
         .replace(/'/g, '&#x27;');
 }
 
+function isValidActorUrl(url) {
+    try {
+        const parsed = new URL(url);
+        // Only allow HTTP/HTTPS
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        // Block internal hostnames
+        const hostname = parsed.hostname.toLowerCase();
+        if (hostname === 'localhost' || hostname === 'localhost.localdomain' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+            return false;
+        }
+        // Block IP-based URLs that could point to internal resources
+        const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+        if (ipMatch) {
+            const octets = [parseInt(ipMatch[1]), parseInt(ipMatch[2]), parseInt(ipMatch[3]), parseInt(ipMatch[4])];
+            // Block loopback (127.x.x.x)
+            if (octets[0] === 127) return false;
+            // Block private ranges
+            if (octets[0] === 10) return false; // 10.0.0.0/8
+            if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return false; // 172.16.0.0/12
+            if (octets[0] === 192 && octets[1] === 168) return false; // 192.168.0.0/16
+            // Block link-local (169.254.0.0/16 - AWS/Azure/GCP metadata)
+            if (octets[0] === 169 && octets[1] === 254) return false;
+            // Block broadcast
+            if (octets[0] === 0 || (octets[0] === 255 && octets[1] === 255 && octets[2] === 255 && octets[3] === 255)) return false;
+        }
+        // Block IPv6 loopback and link-local
+        if (hostname.startsWith('::1') || hostname.startsWith('fe80::') || hostname.startsWith('fc00::')) {
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 // Actor endpoint
 router.get('/u/:username', (req, res) => {
     if (req.params.username !== USERNAME) {
@@ -248,6 +322,13 @@ router.post('/u/:username/inbox', async (req, res) => {
         return res.status(404).json({ error: 'Actor not found' });
     }
     
+    // Rate limiting
+    const rateLimit = checkInboxRateLimit(req);
+    if (!rateLimit.allowed) {
+        console.warn('[ActivityPub] Rate limit exceeded for IP:', req.ip || req.connection.remoteAddress);
+        return res.status(429).json({ error: 'Too many requests' });
+    }
+    
     try {
         const activity = req.body;
         
@@ -261,7 +342,46 @@ router.post('/u/:username/inbox', async (req, res) => {
             console.log('[ActivityPub] Actor:', typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor));
         }
         
-        // Always auto-accept Follow requests (signature verification has compatibility issues)
+        // Verify HTTP Signature for all activities (skip rejection in test mode)
+        let verifiedActorId = null;
+        if (process.env.NODE_ENV !== 'test') {
+            try {
+                const sigVerify = await verifyHttpSignature(req);
+                if (!sigVerify.valid) {
+                    console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
+                    return res.status(401).json({ error: 'Invalid signature' });
+                }
+                verifiedActorId = sigVerify.actor?.id;
+            } catch (sigErr) {
+                console.warn('[ActivityPub] Signature verification error:', sigErr.message);
+                return res.status(401).json({ error: 'Signature verification failed' });
+            }
+        } else {
+            // Test mode: verify but only warn on failure
+            try {
+                const sigVerify = await verifyHttpSignature(req);
+                if (!sigVerify.valid) {
+                    console.warn('[ActivityPub] TEST MODE: Signature verification failed (not rejecting):', sigVerify.error);
+                } else {
+                    verifiedActorId = sigVerify.actor?.id;
+                }
+            } catch (sigErr) {
+                console.warn('[ActivityPub] TEST MODE: Signature verification error (not rejecting):', sigErr.message);
+            }
+        }
+        
+        // Verify actor matches signature (in production)
+        if (verifiedActorId) {
+            const activityActorId = typeof activity.actor === 'string' ? activity.actor : activity.actor?.id;
+            if (activityActorId && activityActorId !== verifiedActorId) {
+                console.warn(`[ActivityPub] Actor mismatch: activity claims ${activityActorId}, signature verified ${verifiedActorId}`);
+                if (process.env.NODE_ENV !== 'test') {
+                    return res.status(401).json({ error: 'Actor does not match signature' });
+                }
+            }
+        }
+        
+        // Handle Follow requests after signature verification
         if (activity.type === 'Follow') {
             console.log('[ActivityPub] Processing Follow request');
             try {
@@ -270,18 +390,6 @@ router.post('/u/:username/inbox', async (req, res) => {
             } catch (followErr) {
                 console.error('[ActivityPub] Error handling Follow:', followErr.message);
                 return res.status(500).json({ error: 'Internal server error' });
-            }
-        }
-        
-        // Verify HTTP Signature for other activities (skip in test mode)
-        if (process.env.NODE_ENV !== 'test') {
-            try {
-                const sigVerify = await verifyHttpSignature(req);
-                if (!sigVerify.valid) {
-                    console.warn('[ActivityPub] Signature verification failed:', sigVerify.error);
-                }
-            } catch (sigErr) {
-                console.warn('[ActivityPub] Signature verification error:', sigErr.message);
             }
         }
         
@@ -527,12 +635,16 @@ async function handleComment(activity) {
     // Try to get actor info
     let actorName = actorId;
     try {
-        const actorResponse = await fetch(actorId, {
-            headers: { 'Accept': 'application/activity+json' }
-        });
-        if (actorResponse.ok) {
-            const actor = await actorResponse.json();
-            actorName = actor.name || actor.preferredUsername || actorId;
+        if (isValidActorUrl(actorId)) {
+            const actorResponse = await fetch(actorId, {
+                headers: { 'Accept': 'application/activity+json' }
+            });
+            if (actorResponse.ok) {
+                const actor = await actorResponse.json();
+                actorName = actor.name || actor.preferredUsername || actorId;
+            }
+        } else {
+            console.warn('[ActivityPub] Skipping actor fetch for comment: invalid URL (SSSRF protection)');
         }
     } catch (err) {
         console.error('[ActivityPub] Could not fetch actor info:', err.message);
@@ -557,25 +669,55 @@ async function handleUndo(activity) {
     const object = activity.object;
     const objectType = typeof object === 'string' ? null : object.type;
     const activityId = typeof object === 'string' ? object : object.id;
+    const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
     
     if (objectType === 'Like' || (typeof object === 'string' && object.includes('like'))) {
-        const stmt = db.prepare('DELETE FROM likes WHERE activity_id = ?');
-        stmt.run(activityId);
-        console.log(`[ActivityPub] Undid like: ${activityId}`);
+        const existingLike = db.prepare('SELECT actor_id FROM likes WHERE activity_id = ?').get(activityId);
+        if (existingLike) {
+            if (existingLike.actor_id !== actorId) {
+                console.warn(`[ActivityPub] Undo Like rejected: actor mismatch. Requested by ${actorId}, owned by ${existingLike.actor_id}`);
+                return;
+            }
+            const stmt = db.prepare('DELETE FROM likes WHERE activity_id = ?');
+            stmt.run(activityId);
+            console.log(`[ActivityPub] Undid like: ${activityId}`);
+        } else {
+            console.warn(`[ActivityPub] Undo Like: activity not found ${activityId}`);
+        }
     } else if (objectType === 'Announce') {
-        const stmt = db.prepare('DELETE FROM shares WHERE activity_id = ?');
-        stmt.run(activityId);
-        console.log(`[ActivityPub] Undid announce: ${activityId}`);
+        const existingShare = db.prepare('SELECT actor_id FROM shares WHERE activity_id = ?').get(activityId);
+        if (existingShare) {
+            if (existingShare.actor_id !== actorId) {
+                console.warn(`[ActivityPub] Undo Announce rejected: actor mismatch. Requested by ${actorId}, owned by ${existingShare.actor_id}`);
+                return;
+            }
+            const stmt = db.prepare('DELETE FROM shares WHERE activity_id = ?');
+            stmt.run(activityId);
+            console.log(`[ActivityPub] Undid announce: ${activityId}`);
+        } else {
+            console.warn(`[ActivityPub] Undo Announce: activity not found ${activityId}`);
+        }
     } else if (objectType === 'Follow') {
-        const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
-        stmt.run(activityId);
-        console.log(`[ActivityPub] Undid follow: ${activityId}`);
+        const existingFollower = db.prepare('SELECT actor_id FROM followers WHERE actor_id = ?').get(actorId);
+        if (existingFollower) {
+            const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
+            stmt.run(actorId);
+            console.log(`[ActivityPub] Undid follow: ${actorId}`);
+        } else {
+            console.warn(`[ActivityPub] Undo Follow: follower not found ${actorId}`);
+        }
     }
 }
 
 async function handleFollow(activity) {
     const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
     const actorUrl = typeof activity.actor === 'string' ? activity.actor : (activity.actor.id || activity.actor.url);
+    
+    // SSRF protection: validate actor URL
+    if (!isValidActorUrl(actorId)) {
+        console.error(`[ActivityPub] Invalid actor URL (SSRF blocked): ${actorId}`);
+        return;
+    }
     
     try {
         // Fetch actor info to get their inbox
@@ -593,6 +735,12 @@ async function handleFollow(activity) {
         
         if (!inboxUrl) {
             console.error('[ActivityPub] Actor has no inbox');
+            return;
+        }
+        
+        // SSRF protection: validate inbox URL
+        if (!isValidActorUrl(inboxUrl)) {
+            console.error(`[ActivityPub] Invalid inbox URL (SSRF blocked): ${inboxUrl}`);
             return;
         }
         
@@ -906,6 +1054,11 @@ async function verifyHttpSignature(req) {
     
     // Fetch the actor's public key
     try {
+        // SSRF protection: validate URL before fetching
+        if (!isValidActorUrl(actorUrl)) {
+            return { valid: false, error: 'Invalid actor URL (SSRF blocked)' };
+        }
+        
         console.log('[ActivityPub] Fetching actor from:', actorUrl);
         const actorResponse = await fetch(actorUrl, {
             headers: { 'Accept': 'application/activity+json' }
@@ -963,7 +1116,8 @@ async function verifyHttpSignature(req) {
         }
         
         console.log('[ActivityPub] Successfully created public key object, type:', publicKeyObject.type, 'asymmetricKeyType:', publicKeyObject.asymmetricKeyType);
-        // Verify digest if present
+        
+        // Verify digest if present (required for POST requests with body)
         if (digestHeader) {
             const digestMatch = digestHeader.match(/^(SHA-256|sha-256)=(.+)$/i);
             if (digestMatch) {
@@ -975,6 +1129,7 @@ async function verifyHttpSignature(req) {
                 
                 if (expectedDigest !== providedDigest) {
                     console.warn('[ActivityPub] Digest mismatch. Expected:', expectedDigest, 'Got:', providedDigest);
+                    return { valid: false, error: 'Digest mismatch' };
                 }
             }
         }
