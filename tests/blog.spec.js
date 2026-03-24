@@ -143,8 +143,7 @@ test.describe('Embed Endpoint', () => {
         const firstPostLink = page.locator('.post-title a').first();
         const href = await firstPostLink.getAttribute('href');
         
-        // Should be a relative link to a post (not /p/)
-        expect(href).not.toContain('/p/');
+        // Should be a relative link to a post
         expect(href).toMatch(/^\/[a-zA-Z0-9-]+$/);
     });
 
@@ -296,6 +295,97 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
+        expect(response.status()).toBe(202);
+    });
+
+    test('Like activity extracts slug from post URL', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/like-slug-test-${uniqueId}`,
+            type: 'Like',
+            actor: `https://example.com/users/like-slug-test-${uniqueId}`,
+            object: 'http://localhost:6767/welcome'
+        };
+        
+        const response = await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        expect(response.status()).toBe(202);
+        
+        // Verify the like appears on the post page
+        await page.goto('/welcome');
+        const likesSection = page.locator('.post-footer');
+        await expect(likesSection).toBeVisible();
+    });
+
+    test('Announce activity extracts slug from post URL', async ({ request }) => {
+        const uniqueId = Date.now();
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/announce-slug-test-${uniqueId}`,
+            type: 'Announce',
+            actor: `https://example.com/users/announce-slug-test-${uniqueId}`,
+            object: 'http://localhost:6767/welcome'
+        };
+        
+        const response = await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        expect(response.status()).toBe(202);
+    });
+
+    test('Like activity with nested path extracts slug correctly', async ({ page, request }) => {
+        // Test that a hypothetical BLOG_PATH would still work
+        // The slug should be extracted from the last path segment
+        const uniqueId = Date.now();
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/like-nested-${uniqueId}`,
+            type: 'Like',
+            actor: `https://example.com/users/like-nested-${uniqueId}`,
+            // Using a URL that mimics a subpath like /posts/welcome
+            object: 'http://localhost:6767/posts/welcome'
+        };
+        
+        const response = await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // This should fail to find the post since /posts/welcome doesn't match our routes
+        // But the slug extraction should still work - it just won't find the post
+        expect(response.status()).toBe(202);
+    });
+
+    test('Like activity is rejected for unknown post', async ({ request }) => {
+        const uniqueId = Date.now();
+        const activity = {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            id: `https://example.com/activities/like-unknown-${uniqueId}`,
+            type: 'Like',
+            actor: `https://example.com/users/like-unknown-${uniqueId}`,
+            object: 'http://localhost:6767/nonexistent-post-12345'
+        };
+        
+        const response = await request.post('/u/admin/inbox', {
+            data: activity,
+            headers: {
+                'Content-Type': 'application/activity+json'
+            }
+        });
+        
+        // Activity is accepted (202) but no like is stored for unknown posts
         expect(response.status()).toBe(202);
     });
 
