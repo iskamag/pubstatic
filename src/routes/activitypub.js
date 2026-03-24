@@ -761,15 +761,34 @@ async function verifyHttpSignature(req) {
         return { valid: false, error: 'Invalid Signature header format' };
     }
     
+    // Validate date header freshness (prevent replay attacks)
+    if (dateHeader) {
+        try {
+            const signatureTime = new Date(dateHeader);
+            const now = new Date();
+            const skewMinutes = Math.abs(now - signatureTime) / 1000 / 60;
+            if (skewMinutes > 30) {
+                console.warn('[ActivityPub] Signature timestamp too old:', dateHeader);
+                // Don't reject - some servers have clock skew, but log warning
+            }
+        } catch (e) {
+            console.warn('[ActivityPub] Invalid date header:', dateHeader);
+        }
+    }
+    
     let actorUrl = sigParts.keyId;
     
-    // If keyId is a fragment (like "#main-key"), we need to extract the actor URL from the activity
-    if (actorUrl.startsWith('#')) {
-        // The actor URL should be in the request body
+    // If keyId includes a fragment, extract the base URL
+    if (actorUrl.includes('#')) {
+        actorUrl = actorUrl.split('#')[0];
+    }
+    
+    // If keyId is just a fragment (like "#main-key"), use actor from body
+    if (sigParts.keyId.startsWith('#') || !sigParts.keyId.includes('://')) {
         if (req.body && req.body.actor) {
             actorUrl = typeof req.body.actor === 'string' ? req.body.actor : req.body.actor.id;
         } else {
-            return { valid: false, error: 'Cannot resolve actor URL from keyId fragment' };
+            return { valid: false, error: 'Cannot resolve actor URL from keyId' };
         }
     }
     
@@ -795,7 +814,6 @@ async function verifyHttpSignature(req) {
             } else if (actor.publicKey.publicKeyPem) {
                 publicKeyPem = actor.publicKey.publicKeyPem;
             } else if (actor.publicKey.publicKeyBase64) {
-                // Convert base64 to PEM if needed
                 publicKeyPem = actor.publicKey.publicKeyBase64;
             }
         }
@@ -818,23 +836,26 @@ async function verifyHttpSignature(req) {
             publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyPem}\n-----END PUBLIC KEY-----`;
         }
         
-        // Verify digest if present - use rawBody if available
-        if (digestHeader && digestHeader.startsWith('SHA-256=')) {
-            const bodyBuffer = req.rawBody || Buffer.from(JSON.stringify(req.body));
-            const expectedDigest = crypto.createHash('sha256')
-                .update(bodyBuffer)
-                .digest('base64');
-            const providedDigest = digestHeader.substring(8);
-            
-            if (expectedDigest !== providedDigest) {
-                console.warn('[ActivityPub] Digest mismatch. Expected:', expectedDigest, 'Got:', providedDigest);
-                // Don't fail on digest mismatch - some implementations calculate digest differently
+        // Verify digest if present
+        if (digestHeader) {
+            const digestMatch = digestHeader.match(/^(SHA-256|sha-256)=(.+)$/i);
+            if (digestMatch) {
+                const bodyBuffer = req.rawBody || Buffer.from(JSON.stringify(req.body));
+                const expectedDigest = crypto.createHash('sha256')
+                    .update(bodyBuffer)
+                    .digest('base64');
+                const providedDigest = digestMatch[2];
+                
+                if (expectedDigest !== providedDigest) {
+                    console.warn('[ActivityPub] Digest mismatch. Expected:', expectedDigest, 'Got:', providedDigest);
+                }
             }
         }
         
-        // Build signing string
+        // Build signing string dynamically from headers listed in signature
         const headers = sigParts.headers || '(request-target) host date digest';
-        const headersList = headers.split(' ');
+        // Handle both space and comma-separated headers
+        const headersList = headers.split(/[\s,]+/).filter(h => h.length > 0);
         
         const urlObj = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
         const requestTarget = `${req.method.toLowerCase()} ${urlObj.pathname}`;
@@ -844,12 +865,15 @@ async function verifyHttpSignature(req) {
             const h = header.toLowerCase();
             if (h === '(request-target)') {
                 signingParts.push(`(request-target): ${requestTarget}`);
-            } else if (h === 'host') {
-                signingParts.push(`host: ${req.get('host')}`);
-            } else if (h === 'date') {
-                signingParts.push(`date: ${dateHeader}`);
-            } else if (h === 'digest') {
-                signingParts.push(`digest: ${digestHeader}`);
+            } else {
+                // Get header value from request headers
+                const headerValue = req.headers[h];
+                if (headerValue === undefined) {
+                    console.warn(`[ActivityPub] Missing header in signature: ${h}`);
+                    signingParts.push(`${h}: `);
+                } else {
+                    signingParts.push(`${h}: ${headerValue}`);
+                }
             }
         }
         
@@ -857,33 +881,14 @@ async function verifyHttpSignature(req) {
         console.log('[ActivityPub] Signing string:', signingString);
         
         // Verify signature
-        const verifier = crypto.createVerify('rsa-sha256');
+        const verifier = crypto.createVerify('RSA-SHA256');
         verifier.update(signingString);
         
         const isValid = verifier.verify(publicKeyPem, sigParts.signature, 'base64');
         
         if (!isValid) {
-            console.warn('[ActivityPub] Signature verification failed. Attempting fallback methods...');
-            
-            // Try different key ID extraction methods
-            // Some implementations use keyId as just the actor URL + fragment
-            if (actorUrl.includes(sigParts.keyId.replace('#', ''))) {
-                // keyId is within actorUrl, try getting key directly from actor
-                const keyIdFragment = sigParts.keyId.replace('#', '');
-                if (actor.publicKey && typeof actor.publicKey === 'object') {
-                    for (const key of Object.values(actor.publicKey)) {
-                        if (key && key.publicKeyPem) {
-                            const testVerifier = crypto.createVerify('rsa-sha256');
-                            testVerifier.update(signingString);
-                            if (testVerifier.verify(key.publicKeyPem, sigParts.signature, 'base64')) {
-                                console.log('[ActivityPub] Signature verified with alternate key');
-                                return { valid: true, actor: actor };
-                            }
-                        }
-                    }
-                }
-            }
-            
+            console.warn('[ActivityPub] Signature verification failed for keyId:', sigParts.keyId);
+            console.warn('[ActivityPub] Signing string was:', signingString);
             return { valid: false, error: 'Signature verification failed' };
         }
         
@@ -891,7 +896,7 @@ async function verifyHttpSignature(req) {
         
     } catch (err) {
         console.error('[ActivityPub] Signature verification error:', err.message);
-        return { valid: false, error: `Verification error: ${err.message}` };
+        return { valid: false, error: err.message };
     }
 }
 

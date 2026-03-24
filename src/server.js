@@ -39,7 +39,12 @@ app.set('layout', 'layout');
 
 // Body parsing - for ActivityPub we need raw body for signature verification
 app.use(express.json({
-    type: ['application/json', 'application/activity+json', 'application/ld+json', 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"'],
+    type: req => {
+        const ct = req.headers['content-type'] || '';
+        return ct.includes('application/json') ||
+               ct.includes('application/activity+json') ||
+               ct.includes('application/ld+json');
+    },
     verify: (req, res, buf) => {
         req.rawBody = buf;
     },
