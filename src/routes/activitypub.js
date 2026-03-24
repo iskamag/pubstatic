@@ -770,8 +770,18 @@ function normalizeToKeyObject(keyData) {
         }
     }
     
+    if (trimmedKey.includes('-----BEGIN EC PUBLIC KEY-----') ||
+        trimmedKey.includes('-----BEGIN ED25519 PUBLIC KEY-----')) {
+        try {
+            return crypto.createPublicKey(trimmedKey);
+        } catch (e) {
+            console.warn('[ActivityPub] Failed to create key from ECPEM:', e.message);
+        }
+    }
+    
     const base64Key = trimmedKey.replace(/\s/g, '');
     if (/^[A-Za-z0-9+/\-_]+=*$/.test(base64Key)) {
+        // RSA keys start with MII
         if (base64Key.startsWith('MII') || base64Key.startsWith('MIIBIjANBg')) {
             const pem = `-----BEGIN PUBLIC KEY-----\n${base64Key}\n-----END PUBLIC KEY-----`;
             try {
@@ -779,6 +789,15 @@ function normalizeToKeyObject(keyData) {
             } catch (e) {
                 console.warn('[ActivityPub] Failed to create key from PEM:', e.message);
             }
+        }
+        // Ed25519 and EC keys have shorter base64 (32-66 bytes depending on curve)
+        // Try creating a SPKI key
+        const pem = `-----BEGIN PUBLIC KEY-----\n${base64Key}\n-----END PUBLIC KEY-----`;
+        try {
+            const key = crypto.createPublicKey(pem);
+            return key;
+        } catch (e) {
+            // Not a valid key, will be caught below
         }
     }
     
@@ -791,6 +810,51 @@ function normalizeToKeyObject(keyData) {
     }
     
     return null;
+}
+
+function getVerifyAlgorithms(keyType, sigAlgorithm) {
+    // Explicit algorithm specified
+    if (sigAlgorithm === 'ed25519' || sigAlgorithm === 'ed25519-sha512') {
+        return [null]; // Ed25519 doesn't use a hash
+    }
+    if (sigAlgorithm === 'ecdsa-sha256') {
+        return ['sha256'];
+    }
+    if (sigAlgorithm === 'ecdsa-sha384') {
+        return ['sha384'];
+    }
+    if (sigAlgorithm === 'ecdsa-sha512') {
+        return ['sha512'];
+    }
+    if (sigAlgorithm === 'rsa-sha256' || sigAlgorithm === 'hs2019') {
+        // hs2019 is modern - use the key type to determine algorithm
+        if (keyType === 'ed25519') {
+            return [null];
+        }
+        if (keyType === 'ec') {
+            // Try common EC curves
+            return ['sha256', 'sha384', 'sha512'];
+        }
+        return ['RSA-SHA256', 'RSA-SHA512'];
+    }
+    
+    // No algorithm specified - infer from key type
+    if (keyType === 'ed25519') {
+        return [null]; // Ed25519 signs message directly
+    }
+    if (keyType === 'ed448') {
+        return [null];
+    }
+    if (keyType === 'ec') {
+        // Try ECDSA with common hashes
+        return ['sha256', 'sha384', 'sha512'];
+    }
+    if (keyType === 'rsa') {
+        return ['RSA-SHA256', 'RSA-SHA512'];
+    }
+    
+    // Default fallback - try common algorithms
+    return ['RSA-SHA256', 'sha256', 'sha512', null];
 }
 
 // Verify HTTP Signature for incoming requests
@@ -948,7 +1012,29 @@ async function verifyHttpSignature(req) {
         console.log('[ActivityPub] Signing string:', signingString);
         
         const signatureBuffer = Buffer.from(sigParts.signature, 'base64');
-        const isValid = crypto.verify('RSA-SHA256', Buffer.from(signingString), publicKeyObject, signatureBuffer);
+        const keyType = publicKeyObject.asymmetricKeyType || 'rsa';
+        const sigAlgorithm = (sigParts.algorithm || '').toLowerCase();
+        
+        const verifyAlgorithms = getVerifyAlgorithms(keyType, sigAlgorithm);
+        
+        let isValid = false;
+        let lastError = null;
+        
+        for (const algo of verifyAlgorithms) {
+            try {
+                if (algo === null) {
+                    isValid = crypto.verify(null, Buffer.from(signingString), publicKeyObject, signatureBuffer);
+                } else {
+                    isValid = crypto.verify(algo, Buffer.from(signingString), publicKeyObject, signatureBuffer);
+                }
+                if (isValid) {
+                    console.log('[ActivityPub] Signature verified with algorithm:', algo || 'ed25519');
+                    break;
+                }
+            } catch (e) {
+                lastError = e;
+            }
+        }
         
         if (!isValid) {
             console.warn('[ActivityPub] Signature verification failed for keyId:', sigParts.keyId);
