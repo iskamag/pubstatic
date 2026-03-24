@@ -745,6 +745,44 @@ function parseSignatureHeader(signatureHeader) {
     return parts;
 }
 
+function normalizeToKeyObject(keyData) {
+    if (!keyData) return null;
+    
+    if (keyData.includes('-----BEGIN PUBLIC KEY-----') || 
+        keyData.includes('-----BEGIN RSA PUBLIC KEY-----')) {
+        return crypto.createPublicKey(keyData);
+    }
+    
+    if (keyData.includes('-----BEGIN CERTIFICATE-----')) {
+        const certMatch = keyData.match(/-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/);
+        if (certMatch) {
+            return crypto.createPublicKey(certMatch[0]);
+        }
+    }
+    
+    const base64Key = keyData.replace(/\s/g, '');
+    if (/^[A-Za-z0-9+/]+=*$/.test(base64Key)) {
+        if (base64Key.startsWith('MII') || base64Key.startsWith('MIIBIjANBg')) {
+            const pem = `-----BEGIN PUBLIC KEY-----\n${base64Key}\n-----END PUBLIC KEY-----`;
+            try {
+                return crypto.createPublicKey(pem);
+            } catch (e) {
+                console.warn('[ActivityPub] Failed to create key from PEM:', e.message);
+            }
+        }
+    }
+    
+    try {
+        const jwk = JSON.parse(keyData);
+        if (jwk.kty) {
+            return crypto.createPublicKey({ key: jwk, format: 'jwk' });
+        }
+    } catch (e) {
+    }
+    
+    return null;
+}
+
 // Verify HTTP Signature for incoming requests
 async function verifyHttpSignature(req) {
     const signatureHeader = req.headers['signature'];
@@ -805,35 +843,49 @@ async function verifyHttpSignature(req) {
         
         const actor = await actorResponse.json();
         
-        // Try different public key formats
-        let publicKeyPem = null;
+        let publicKeyObject = null;
         
         if (actor.publicKey) {
-            if (typeof actor.publicKey === 'string') {
-                publicKeyPem = actor.publicKey;
-            } else if (actor.publicKey.publicKeyPem) {
-                publicKeyPem = actor.publicKey.publicKeyPem;
-            } else if (actor.publicKey.publicKeyBase64) {
-                publicKeyPem = actor.publicKey.publicKeyBase64;
+            if (typeof actor.publicKey === 'object' && actor.publicKey.publicKeyJwk) {
+                try {
+                    publicKeyObject = crypto.createPublicKey({ key: actor.publicKey.publicKeyJwk, format: 'jwk' });
+                } catch (e) {
+                    console.warn('[ActivityPub] Failed to create key from JWK:', e.message);
+                }
+            }
+            if (!publicKeyObject) {
+                let publicKeyPem = null;
+                if (typeof actor.publicKey === 'string') {
+                    publicKeyPem = actor.publicKey;
+                } else if (actor.publicKey.publicKeyPem) {
+                    publicKeyPem = actor.publicKey.publicKeyPem;
+                } else if (actor.publicKey.publicKeyBase64) {
+                    publicKeyPem = actor.publicKey.publicKeyBase64;
+                }
+                
+                if (publicKeyPem) {
+                    publicKeyObject = normalizeToKeyObject(publicKeyPem);
+                }
             }
         }
         
         // Also check for direct publicKeyPem property
-        if (!publicKeyPem && actor.publicKeyPem) {
-            publicKeyPem = actor.publicKeyPem;
+        if (!publicKeyObject && actor.publicKeyPem) {
+            publicKeyObject = normalizeToKeyObject(actor.publicKeyPem);
         }
         
-        if (!publicKeyPem) {
+        // Also check for direct publicKeyJwk property
+        if (!publicKeyObject && actor.publicKeyJwk) {
+            try {
+                publicKeyObject = crypto.createPublicKey({ key: actor.publicKeyJwk, format: 'jwk' });
+            } catch (e) {
+                console.warn('[ActivityPub] Failed to create key from direct publicKeyJwk:', e.message);
+            }
+        }
+        
+        if (!publicKeyObject) {
             console.error('[ActivityPub] Actor public key not found. Actor keys:', Object.keys(actor).filter(k => k.toLowerCase().includes('key')));
             return { valid: false, error: 'Actor has no public key' };
-        }
-        
-        // Convert RSA public key in different formats to PEM if needed
-        if (publicKeyPem.includes('-----BEGIN PUBLIC KEY-----') || publicKeyPem.includes('-----BEGIN RSA PUBLIC KEY-----')) {
-            // Already in PEM format
-        } else if (publicKeyPem.includes('MII')) {
-            // Base64-encoded SPKI format, convert to PEM
-            publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyPem}\n-----END PUBLIC KEY-----`;
         }
         
         // Verify digest if present
@@ -880,11 +932,8 @@ async function verifyHttpSignature(req) {
         const signingString = signingParts.join('\n');
         console.log('[ActivityPub] Signing string:', signingString);
         
-        // Verify signature
-        const verifier = crypto.createVerify('RSA-SHA256');
-        verifier.update(signingString);
-        
-        const isValid = verifier.verify(publicKeyPem, sigParts.signature, 'base64');
+        const signatureBuffer = Buffer.from(sigParts.signature, 'base64');
+        const isValid = crypto.verify('RSA-SHA256', Buffer.from(signingString), publicKeyObject, signatureBuffer);
         
         if (!isValid) {
             console.warn('[ActivityPub] Signature verification failed for keyId:', sigParts.keyId);
