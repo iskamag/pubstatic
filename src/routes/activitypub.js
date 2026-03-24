@@ -178,7 +178,16 @@ function isValidActorUrl(url) {
         }
         // Block internal hostnames
         const hostname = parsed.hostname.toLowerCase();
-        if (hostname === 'localhost' || hostname === 'localhost.localdomain' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+        // Block localhost variants
+        if (hostname === 'localhost' || hostname === 'localhost.localdomain' || hostname === '127.0.0.1' || hostname === '::1') {
+            return false;
+        }
+        // Block .local, .internal, .localhost TLDs and subdomains
+        if (hostname.endsWith('.local') || hostname.endsWith('.internal') || hostname.endsWith('.localhost')) {
+            return false;
+        }
+        // Block internal domain names
+        if (hostname.includes('.internal.') || hostname.startsWith('internal.') || hostname === 'internal') {
             return false;
         }
         // Block IP-based URLs that could point to internal resources
@@ -196,8 +205,12 @@ function isValidActorUrl(url) {
             // Block broadcast
             if (octets[0] === 0 || (octets[0] === 255 && octets[1] === 255 && octets[2] === 255 && octets[3] === 255)) return false;
         }
-        // Block IPv6 loopback and link-local
-        if (hostname.startsWith('::1') || hostname.startsWith('fe80::') || hostname.startsWith('fc00::')) {
+        // Block IPv6 addresses (bracket notation like [::1] or [fe80::1])
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            return false; // Block all IPv6 addresses for simplicity
+        }
+        // Block plain IPv6 addresses
+        if (hostname.includes(':')) {
             return false;
         }
         return true;
@@ -1509,3 +1522,7 @@ module.exports.queuePostUpdate = queuePostUpdate;
 module.exports.queuePostCreate = queuePostCreate;
 module.exports.queueActorUpdate = queueActorUpdate;
 module.exports.processOutboundActivities = processOutboundActivities;
+module.exports.verifyHttpSignature = verifyHttpSignature;
+module.exports.isValidActorUrl = isValidActorUrl;
+module.exports.normalizeToKeyObject = normalizeToKeyObject;
+module.exports.checkInboxRateLimit = checkInboxRateLimit;
