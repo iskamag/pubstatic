@@ -162,12 +162,6 @@ location /posts/ {
     proxy_set_header Host $host;
 }
 
-# ActivityPub actor and inbox/outbox at root
-location /u/ {
-    proxy_pass http://localhost:6767;
-    proxy_set_header Host $host;
-}
-
 # WebFinger (only this, not all .well-known)
 location /.well-known/webfinger {
     proxy_pass http://localhost:6767;
@@ -218,4 +212,3 @@ If Mastodon can fetch your posts but not send likes/comments:
    DELETE FROM unavailable_domains WHERE domain = 'yourdomain.com';
    ```
 3. New followers should work immediately after clearing
-
