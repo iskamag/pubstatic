@@ -1,4 +1,4 @@
-<% const bp = blogPath ? blogPath + '/' : '/'; %>
+<% const bp = blogPath && blogPath !== '' ? blogPath + '/' : '/'; %>
 <section class="hero">
     <h1>Tag: <%= currentTag %></h1>
     <nav class="tags-nav">
@@ -18,7 +18,7 @@
         <% posts.forEach(post => { %>
         <article class="post-card" id="post-<%= post.id %>">
             <h2 class="post-title">
-                <a href="<%= bp %>p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
+                <a href="<%= bp %><%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
             </h2>
             <time class="post-date" datetime="<%= post.published_at %>">
                 <%= new Date(post.published_at).toLocaleDateString('en-US', { 
@@ -63,61 +63,4 @@
 
 <nav class="post-nav">
     <a href="<%= bp || '/' %>" class="back-link">← Back to all posts</a>
-</nav>
-</section>
-
-<% if (posts.length === 0) { %>
-    <div class="empty-state">
-        <p>No posts found with this tag.</p>
-    </div>
-<% } else { %>
-    <div class="posts-list">
-        <% posts.forEach(post => { %>
-        <article class="post-card" id="post-<%= post.id %>">
-            <h2 class="post-title">
-                <a href="<%= blogPath %>/p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
-            </h2>
-            <time class="post-date" datetime="<%= post.published_at %>">
-                <%= new Date(post.published_at).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                }) %>
-            </time>
-            <p class="post-excerpt"><%= post.excerpt %></p>
-            <% if (post.tags.length > 0) { %>
-            <div class="post-tags">
-                <% post.tags.forEach(tag => { %>
-                <a href="<%= tag === currentTag ? blogPath : blogPath + '/tag/' + tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
-                <% }); %>
-            </div>
-            <% } %>
-            <div class="post-stats">
-                <span class="stat">❤️ <%= post.likes_count %></span>
-                <span class="stat">💬 <%= post.comments_count %></span>
-                <span class="stat">🔄 <%= post.shares_count %></span>
-            </div>
-        </article>
-        <% }); %>
-    </div>
-    
-    <% if (pagination && (pagination.hasPrev || pagination.hasNext)) { %>
-    <nav class="pagination">
-        <% if (pagination.hasPrev) { %>
-        <a href="<%= blogPath %>/tag/<%= currentTag %>?page=<%= pagination.current - 1 %>" class="pagination-link pagination-prev">← Newer</a>
-        <% } else { %>
-        <span class="pagination-link pagination-disabled">← Newer</span>
-        <% } %>
-        <span class="pagination-info">Page <%= pagination.current %> of <%= pagination.total %></span>
-        <% if (pagination.hasNext) { %>
-        <a href="<%= blogPath %>/tag/<%= currentTag %>?page=<%= pagination.current + 1 %>" class="pagination-link pagination-next">Older →</a>
-        <% } else { %>
-        <span class="pagination-link pagination-disabled">Older →</span>
-        <% } %>
-    </nav>
-    <% } %>
-<% } %>
-
-<nav class="post-nav">
-    <a href="<%= blogPath %>" class="back-link">← Back to all posts</a>
 </nav>

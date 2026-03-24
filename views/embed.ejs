@@ -69,12 +69,12 @@
     </style>
 </head>
 <body>
-<% const bp = typeof blogPath !== 'undefined' ? blogPath + '/' : '/'; %>
+<% const bp = blogPath && blogPath !== '' ? blogPath + '/' : '/'; %>
     <div class="embed-container">
         <% posts.forEach(post => { %>
         <article class="post-card">
             <h2 class="post-title">
-                <a href="<%= bp %>p/<%= post.slug %>"><%= post.title %></a>
+                <a href="<%= bp %><%= post.slug %>"><%= post.title %></a>
             </h2>
             <div class="post-meta">
                 <time datetime="<%= post.published_at %>">

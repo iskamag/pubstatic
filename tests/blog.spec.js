@@ -30,7 +30,7 @@ test.describe('Blog Frontend', () => {
     });
 
     test('individual post page displays correctly', async ({ page }) => {
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         await expect(page.locator('.post-full')).toBeVisible();
         await expect(page.locator('.post-title')).toContainText('Welcome');
@@ -65,7 +65,7 @@ test.describe('Blog Frontend', () => {
     });
 
     test('back navigation works', async ({ page }) => {
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         await page.locator('.back-link').click();
         
@@ -101,6 +101,72 @@ test.describe('Blog Frontend', () => {
         // Check for stylesheet link
         const stylesheet = await page.locator('link[rel="stylesheet"]').first();
         await expect(stylesheet).toHaveAttribute('href', /static\.css/);
+    });
+});
+
+test.describe('Embed Endpoint', () => {
+    test('embed page loads successfully', async ({ page }) => {
+        await page.goto('/new');
+        
+        // Should have embed container
+        await expect(page.locator('.embed-container')).toBeVisible();
+    });
+
+    test('embed displays latest posts', async ({ page }) => {
+        await page.goto('/new');
+        
+        // Should show post cards
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeGreaterThan(0);
+        expect(posts).toBeLessThanOrEqual(3);
+    });
+
+    test('embed has correct structure', async ({ page }) => {
+        await page.goto('/new');
+        
+        const firstPost = page.locator('.post-card').first();
+        
+        // Should have title link
+        await expect(firstPost.locator('.post-title a')).toBeVisible();
+        
+        // Should have date
+        await expect(firstPost.locator('.post-meta time')).toBeVisible();
+        
+        // Should have stats
+        await expect(firstPost.locator('.post-stats')).toBeVisible();
+    });
+
+    test('embed post links are correct', async ({ page }) => {
+        await page.goto('/new');
+        
+        // Get first post link
+        const firstPostLink = page.locator('.post-title a').first();
+        const href = await firstPostLink.getAttribute('href');
+        
+        // Should be a relative link to a post (not /p/)
+        expect(href).not.toContain('/p/');
+        expect(href).toMatch(/^\/[a-zA-Z0-9-]+$/);
+    });
+
+    test('embed is self-contained HTML', async ({ page }) => {
+        await page.goto('/new');
+        
+        // Should have its own styles (not link to external CSS)
+        const styles = page.locator('style');
+        const styleCount = await styles.count();
+        expect(styleCount).toBeGreaterThan(0);
+        
+        // Should not have layout wrapper
+        await expect(page.locator('.site-header')).not.toBeVisible();
+        await expect(page.locator('.site-footer')).not.toBeVisible();
+    });
+
+    test('embed supports dark mode', async ({ page }) => {
+        await page.goto('/new');
+        
+        // Should have dark mode styles
+        const darkModeStyles = await page.locator('style').allTextContents();
+        expect(darkModeStyles.join('')).toContain('prefers-color-scheme: dark');
     });
 });
 
@@ -153,7 +219,7 @@ test.describe('ActivityPub Endpoints', () => {
             id: 'https://example.com/activities/1',
             type: 'Like',
             actor: 'https://example.com/users/test',
-            object: 'http://localhost:6767/p/welcome'
+            object: 'http://localhost:6767/welcome'
         };
         
         const response = await request.post('/u/admin/inbox', {
@@ -186,7 +252,7 @@ test.describe('ActivityPub Endpoints', () => {
 test.describe.serial('ActivityPub Activity Processing', () => {
     test.beforeAll(async ({ request }) => {
         // Ensure welcome post exists for these tests
-        const response = await request.get('/p/welcome');
+        const response = await request.get('/welcome');
         if (response.status() === 404) {
             throw new Error('Welcome post must exist for these tests');
         }
@@ -198,7 +264,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             id: `https://example.com/activities/like-${Date.now()}`,
             type: 'Like',
             actor: 'https://example.com/users/testuser',
-            object: 'http://localhost:6767/p/welcome'
+            object: 'http://localhost:6767/welcome'
         };
         
         await request.post('/u/admin/inbox', {
@@ -209,7 +275,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         });
         
         // Visit the post and check like count increased
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         await expect(page.locator('.post-footer')).toContainText('Likes');
     });
@@ -220,7 +286,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             id: `https://example.com/activities/announce-${Date.now()}`,
             type: 'Announce',
             actor: 'https://example.com/users/testuser',
-            object: 'http://localhost:6767/p/welcome'
+            object: 'http://localhost:6767/welcome'
         };
         
         const response = await request.post('/u/admin/inbox', {
@@ -243,7 +309,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/${Date.now()}`,
                 type: 'Note',
                 content: 'This is a test comment',
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -270,7 +336,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/${uniqueId}`,
                 type: 'Note',
                 content: commentContent,
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -282,7 +348,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         });
         
         // Visit the post and verify comment is displayed
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Check comments section exists
         await expect(page.locator('.comments-section')).toBeVisible();
@@ -300,7 +366,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         const uniqueId = Date.now();
         
         // Get initial comment count
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         const initialCount = await page.locator('.comments-section h2').textContent();
         const initialMatch = initialCount.match(/\((\d+)\)/);
         const initialNumber = initialMatch ? parseInt(initialMatch[1]) : 0;
@@ -315,7 +381,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/count-${uniqueId}`,
                 type: 'Note',
                 content: `Count test comment ${uniqueId}`,
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -350,7 +416,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                     id: `https://example.com/notes/${baseId}-1`,
                     type: 'Note',
                     content: 'First comment',
-                    inReplyTo: 'http://localhost:6767/p/welcome'
+                    inReplyTo: 'http://localhost:6767/welcome'
                 }
             },
             headers: {
@@ -372,7 +438,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                     id: `https://example.com/notes/${baseId}-2`,
                     type: 'Note',
                     content: 'Second comment',
-                    inReplyTo: 'http://localhost:6767/p/welcome'
+                    inReplyTo: 'http://localhost:6767/welcome'
                 }
             },
             headers: {
@@ -381,7 +447,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
         });
         
         // Visit the post
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Check both comments are visible
         const comments = await page.locator('.comment').count();
@@ -405,7 +471,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/md-${uniqueId}`,
                 type: 'Note',
                 content: markdownComment,
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -416,7 +482,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Find the specific comment by its unique ID
         const specificComment = page.locator('.comment', { hasText: uniqueId.toString() });
@@ -442,7 +508,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/xss-${uniqueId}`,
                 type: 'Note',
                 content: xssComment,
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -453,7 +519,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Check that script tags are removed
         const pageContent = await page.content();
@@ -479,7 +545,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                 id: `https://example.com/notes/parent-${baseId}`,
                 type: 'Note',
                 content: parentContent,
-                inReplyTo: 'http://localhost:6767/p/welcome'
+                inReplyTo: 'http://localhost:6767/welcome'
             }
         };
         
@@ -511,7 +577,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Find the parent comment by its unique content
         const parentComment = page.locator('.comment', { hasText: parentContent });
@@ -545,7 +611,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                     id: `https://example.com/notes/nested-parent-${baseId}`,
                     type: 'Note',
                     content: parentContent,
-                    inReplyTo: 'http://localhost:6767/p/welcome'
+                    inReplyTo: 'http://localhost:6767/welcome'
                 }
             },
             headers: {
@@ -610,7 +676,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Check comment count increased (parent + 3 new replies)
         const countText = await page.locator('.comments-section h2').textContent();
@@ -651,7 +717,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
                     id: `https://example.com/notes/author-parent-${baseId}`,
                     type: 'Note',
                     content: parentContent,
-                    inReplyTo: 'http://localhost:6767/p/welcome'
+                    inReplyTo: 'http://localhost:6767/welcome'
                 }
             },
             headers: {
@@ -678,7 +744,7 @@ test.describe.serial('ActivityPub Activity Processing', () => {
             }
         });
         
-        await page.goto('/p/welcome');
+        await page.goto('/welcome');
         
         // Find the specific parent comment
         const parentComment = page.locator('.comment', { hasText: parentContent });
@@ -765,7 +831,7 @@ excerpt: Test post excerpt
         await expect(page.locator('.post-card').filter({ hasText: postTitle })).toBeVisible({ timeout: 10000 });
         
         // Verify post page is accessible
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(postTitle);
         await expect(page.locator('.post-content')).toContainText('This is a test post created by the test suite');
         
@@ -795,7 +861,7 @@ tags: test
         });
         
         // Verify original title exists
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(originalTitle, { timeout: 10000 });
         
         // Edit the post file
@@ -838,7 +904,7 @@ tags: test
         });
         
         // Verify post exists
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(`Delete Test ${uniqueId}`, { timeout: 10000 });
         
         // Delete the post file
@@ -850,7 +916,7 @@ tags: test
         });
         
         // Verify post returns 404
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.error-page')).toBeVisible();
         await expect(page.locator('h1')).toContainText('404');
         
@@ -879,7 +945,7 @@ tags: test
         }
         
         // Verify final version is visible
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(`Rapid Test ${uniqueId} v2`, { timeout: 10000 });
         await expect(page.locator('.post-content')).toContainText('Version 2', { timeout: 10000 });
         
@@ -903,7 +969,7 @@ tags: test
         });
         
         // Verify post is accessible (slug becomes title)
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-full')).toBeVisible();
         
         // Cleanup
@@ -946,7 +1012,7 @@ excerpt: New post for federation test
         });
         
         // Verify the post appears on the site
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(postTitle, { timeout: 10000 });
         await expect(page.locator('.post-content')).toContainText('This is a brand new post that should be federated');
         
@@ -1015,7 +1081,7 @@ tags: test
         });
         
         // Wait for first sync
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(`Existing Post ${uniqueId}`, { timeout: 10000 });
         
         // Clear outbound activities again
@@ -1076,7 +1142,7 @@ tags: test, federation
         });
         
         // Verify original post exists
-        await page.goto(`/p/${postSlug}`);
+        await page.goto(`/${postSlug}`);
         await expect(page.locator('.post-title')).toContainText(originalTitle, { timeout: 10000 });
         
         // Edit the post file
@@ -1491,7 +1557,7 @@ tags: test, rss
         expect(body).toContain(postExcerpt);
         
         // Verify the post appears as an item in the RSS
-        expect(body).toContain(`<link>${request._baseURL || 'http://localhost:6767'}/p/${postSlug}</link>`);
+        expect(body).toContain(`<link>${request._baseURL || 'http://localhost:6767'}/${postSlug}</link>`);
         
         // Cleanup
         if (fs.existsSync(postFile)) {

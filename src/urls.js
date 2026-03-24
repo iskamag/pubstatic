@@ -1,21 +1,20 @@
-const { BASE_URL, BLOG_PATH } = require('./config');
+const { BASE_URL, BLOG_PATH, BLOG_ROOT } = require('./config');
 
-const BLOG_ROOT = BLOG_PATH ? `${BASE_URL}${BLOG_PATH}` : BASE_URL;
-
+// Post URLs - no /p/ prefix, posts are directly under BLOG_ROOT
 function postUrl(slug) {
-    return `${BLOG_ROOT}/p/${slug}`;
+    return `${BLOG_ROOT}/${slug}`;
 }
 
 function postLikesUrl(slug) {
-    return `${BLOG_ROOT}/p/${slug}/likes`;
+    return `${BLOG_ROOT}/${slug}/likes`;
 }
 
 function postSharesUrl(slug) {
-    return `${BLOG_ROOT}/p/${slug}/shares`;
+    return `${BLOG_ROOT}/${slug}/shares`;
 }
 
 function postRepliesUrl(slug) {
-    return `${BLOG_ROOT}/p/${slug}/replies`;
+    return `${BLOG_ROOT}/${slug}/replies`;
 }
 
 function tagUrl(tag) {
@@ -30,6 +29,26 @@ function staticUrl(path) {
     return `${BLOG_ROOT}${path}`;
 }
 
+function actorUrl(username) {
+    return `${BLOG_ROOT}/u/${username}`;
+}
+
+function inboxUrl(username) {
+    return `${BLOG_ROOT}/u/${username}/inbox`;
+}
+
+function outboxUrl(username) {
+    return `${BLOG_ROOT}/u/${username}/outbox`;
+}
+
+function followersUrl(username) {
+    return `${BLOG_ROOT}/u/${username}/followers`;
+}
+
+function followingUrl(username) {
+    return `${BLOG_ROOT}/u/${username}/following`;
+}
+
 module.exports = {
     postUrl,
     postLikesUrl,
@@ -38,5 +57,10 @@ module.exports = {
     tagUrl,
     archiveUrl,
     staticUrl,
+    actorUrl,
+    inboxUrl,
+    outboxUrl,
+    followersUrl,
+    followingUrl,
     BLOG_ROOT
 };

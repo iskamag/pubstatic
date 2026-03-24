@@ -1,4 +1,4 @@
-<% const bp = typeof blogPath !== 'undefined' ? blogPath + '/' : '/'; %>
+<% const bp = blogPath && blogPath !== '' ? blogPath + '/' : '/'; %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
     <link rel="stylesheet" href="<%= bp.replace(/\/$/, '') %>/static.css">
-    <link rel="alternate" type="application/activity+json" href="<%= baseUrl %>/u/<%= user.preferredUsername %>">
+    <link rel="alternate" type="application/activity+json" href="<%= blogRoot %>/u/<%= user.preferredUsername %>">
 </head>
 <body>
     <header class="site-header">
@@ -43,7 +43,7 @@
 
     <footer class="site-footer">
         <div class="container">
-            <p>Powered by ActivityPub • <a href="<%= baseUrl %>/u/<%= user.preferredUsername %>" rel="me">Follow on Fediverse</a></p>
+            <p>Powered by ActivityPub • <a href="<%= blogRoot %>/u/<%= user.preferredUsername %>" rel="me">Follow on Fediverse</a></p>
         </div>
     </footer>
 </body>

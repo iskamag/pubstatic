@@ -2,7 +2,7 @@ const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
 const path = require('path');
 const fs = require('fs');
-const { DOMAIN, USERNAME, PORT, BASE_URL, ACTOR_URL, USER, BLOG_PATH } = require('./config');
+const { DOMAIN, USERNAME, PORT, BASE_URL, BLOG_PATH, BLOG_ROOT, ACTOR_URL, USER } = require('./config');
 const Posts = require('./models/posts');
 const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
@@ -37,15 +37,6 @@ app.set('views', path.join(__dirname, '..', 'views'));
 app.use(expressLayouts);
 app.set('layout', 'layout');
 
-// Static files
-app.use('/static', express.static(path.join(__dirname, '..', 'public')));
-app.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
-app.use('/static.css', express.static(path.join(__dirname, '..', 'public', 'static.css')));
-if (BLOG_PATH !== '/' && BLOG_PATH !== '') {
-    app.use(BLOG_PATH + '/static.css', express.static(path.join(__dirname, '..', 'public', 'static.css')));
-    app.use(BLOG_PATH + '/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
-}
-
 // Body parsing - for ActivityPub we need raw body for signature verification
 app.use(express.json({
     type: ['application/json', 'application/activity+json', 'application/ld+json', 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"'],
@@ -68,15 +59,7 @@ app.use((err, req, res, next) => {
 
 app.use(express.urlencoded({ extended: true }));
 
-// ActivityPub routes
-app.use(activitypubRoutes);
-
-app.get('/rss', (req, res) => {
-    res.set('Content-Type', 'application/rss+xml; charset=utf-8');
-    res.send(getRSS());
-});
-
-// Middleware to restrict access to localhost only
+// WebFinger - MUST be at root for federation discovery
 function localhostOnly(req, res, next) {
     // In test mode, allow all requests (for Playwright tests)
     if (process.env.NODE_ENV === 'test') {
@@ -227,16 +210,22 @@ app.get('/.well-known/webfinger', (req, res) => {
     });
 });
 
-// Frontend routes - mounted at BLOG_PATH (e.g., /posts/)
-// ActivityPub endpoints remain at root (required by spec)
+// Frontend routes - mounted at BLOG_PATH
+// All ActivityPub endpoints are also under BLOG_PATH
 const blog = express.Router();
 
-// Helper to join path segments properly (avoids // issues)
-function blogPath(...parts) {
-    const base = BLOG_PATH.endsWith('/') ? BLOG_PATH.slice(0, -1) : BLOG_PATH;
-    return base + '/' + parts.join('/');
-}
+// Static files under BLOG_PATH
+blog.use('/static', express.static(path.join(__dirname, '..', 'public')));
+blog.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
+blog.use('/static.css', express.static(path.join(__dirname, '..', 'public', 'static.css')));
 
+// RSS feed under BLOG_PATH
+blog.get('/rss', (req, res) => {
+    res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+    res.send(getRSS());
+});
+
+// Home page
 blog.get('/', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 10;
@@ -253,9 +242,8 @@ blog.get('/', async (req, res) => {
         posts,
         tags,
         months,
-        baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
-        blogUrl: blogPath.bind(blogPath),
+        blogRoot: BLOG_ROOT,
         user: USER,
         pagination: {
             current: page,
@@ -266,6 +254,21 @@ blog.get('/', async (req, res) => {
     });
 });
 
+// Embeddable "new posts" endpoint - MUST be before /:slug
+blog.get('/new', (req, res) => {
+    const posts = Posts.getAll(3, 0);
+    
+    res.render('embed', {
+        title: `${USER.name} - Latest Posts`,
+        posts,
+        blogPath: BLOG_PATH,
+        blogRoot: BLOG_ROOT,
+        user: USER,
+        layout: false
+    });
+});
+
+// Archive - MUST be before /:slug
 blog.get('/archive/:year/:month', (req, res) => {
     const year = parseInt(req.params.year);
     const month = parseInt(req.params.month);
@@ -297,8 +300,8 @@ blog.get('/archive/:year/:month', (req, res) => {
         currentYear: year,
         currentMonth: month,
         monthName: monthNames[month - 1],
-        baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
+        blogRoot: BLOG_ROOT,
         user: USER,
         pagination: {
             current: page,
@@ -309,6 +312,7 @@ blog.get('/archive/:year/:month', (req, res) => {
     });
 });
 
+// Tag page - MUST be before /:slug
 blog.get('/tag/:tag', (req, res) => {
     const tag = req.params.tag;
     const page = parseInt(req.query.page) || 1;
@@ -327,8 +331,8 @@ blog.get('/tag/:tag', (req, res) => {
         tags: allTags,
         months,
         currentTag: tag,
-        baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
+        blogRoot: BLOG_ROOT,
         user: USER,
         pagination: {
             current: page,
@@ -339,7 +343,11 @@ blog.get('/tag/:tag', (req, res) => {
     });
 });
 
-blog.get('/p/:slug', (req, res) => {
+// Mount ActivityPub routes (u/:username, etc.) BEFORE /:slug
+blog.use(activitypubRoutes);
+
+// Post page (HTML or ActivityPub JSON) - MUST be last (catch-all for single segment paths)
+blog.get('/:slug', (req, res, next) => {
     const post = Posts.getBySlug(req.params.slug);
     
     if (!post) {
@@ -350,8 +358,8 @@ blog.get('/p/:slug', (req, res) => {
         }
         return res.status(404).render('404', {
             title: 'Not Found',
-            baseUrl: BASE_URL,
             blogPath: BLOG_PATH,
+            blogRoot: BLOG_ROOT,
             user: USER
         });
     }
@@ -371,7 +379,7 @@ blog.get('/p/:slug', (req, res) => {
             updated: post.updated_at,
             url: postUrl(post.slug),
             to: ['https://www.w3.org/ns/activitystreams#Public'],
-            cc: [`${BASE_URL}/u/${USERNAME}/followers`],
+            cc: [USER.followers],
             tag: post.tags.map(tag => ({
                 type: 'Hashtag',
                 name: `#${tag}`,
@@ -380,7 +388,7 @@ blog.get('/p/:slug', (req, res) => {
             likes: {
                 id: postLikesUrl(post.slug),
                 type: 'OrderedCollection',
-                totalItems: post.likes_count ||0
+                totalItems: post.likes_count || 0
             },
             shares: {
                 id: postSharesUrl(post.slug),
@@ -409,45 +417,32 @@ blog.get('/p/:slug', (req, res) => {
         comments,
         likes,
         shares,
-        baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
+        blogRoot: BLOG_ROOT,
         user: USER,
         activityPubId: postUrl(post.slug)
     });
 });
 
-// Embeddable "new posts" endpoint - shows latest posts in condensed format
-blog.get('/new', (req, res) => {
-    const posts = Posts.getAll(3, 0);
-    
-    res.render('embed', {
-        title: `${USER.name} - Latest Posts`,
-        posts,
-        baseUrl: BASE_URL,
-        blogPath: BLOG_PATH,
-        user: USER
-    });
-});
-
-// Mount blog routes at BLOG_PATH (ActivityPub stays at root)
-app.use(BLOG_PATH, blog);
+// Mount blog router at BLOG_PATH
+app.use(BLOG_PATH || '/', blog);
 
 // Error handler
 app.use((err, req, res, next) => {
     console.error(err);
     res.status(500).render('500', {
         title: 'Server Error',
-        baseUrl: BASE_URL,
+        blogRoot: BLOG_ROOT,
         user: USER
     });
 });
 
-// 404 handler
+//404 handler
 app.use((req, res) => {
     res.status(404).render('404', {
         title: 'Not Found',
-        baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
+        blogRoot: BLOG_ROOT,
         user: USER
     });
 });

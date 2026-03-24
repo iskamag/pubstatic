@@ -1,4 +1,4 @@
-<% const bp = blogPath ? blogPath + '/' : '/'; %>
+<% const bp = blogPath && blogPath !== '' ? blogPath + '/' : '/'; %>
 <section class="hero">
     <h1>Recent Posts</h1>
     <% if (tags.length > 0) { %>
@@ -21,7 +21,7 @@
         <% posts.forEach(post => { %>
         <article class="post-card" id="post-<%= post.id %>">
             <h2 class="post-title">
-                <a href="<%= bp %>p/<%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
+                <a href="<%= bp %><%= post.slug %>"><%= post.title %></a><span class="post-id">#<%= post.id %></span>
             </h2>
             <time class="post-date" datetime="<%= post.published_at %>">
                 <%= new Date(post.published_at).toLocaleDateString('en-US', { 

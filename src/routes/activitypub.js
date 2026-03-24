@@ -3,8 +3,8 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
-const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, USER } = require('../config');
-const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl, BLOG_ROOT } = require('../urls');
+const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, BLOG_ROOT, USER } = require('../config');
+const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('../urls');
 const Posts = require('../models/posts');
 const db = require('../db');
 const { marked } = require('marked');
@@ -291,7 +291,7 @@ router.post('/u/:username/inbox', async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
-            activity.id || `${BASE_URL}/activities/${Date.now()}`,
+            activity.id || `${BLOG_ROOT}/activities/${Date.now()}`,
             activity.type,
             typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor),
             typeof activity.object === 'string' ? activity.object : JSON.stringify(activity.object),
@@ -397,14 +397,21 @@ async function handleComment(activity) {
     let postId = null;
     let parentId = null;
     
-    // Check if replying to a post - extract slug from URL regardless of domain
-    const postMatch = note.inReplyTo.match(/\/p\/([^\/\?#]+)/);
-    if (postMatch) {
-        const slug = postMatch[1];
-        const post = Posts.getBySlug(slug);
-        if (post) {
-            if (DEBUG_AP) console.log('[ActivityPub] Comment is reply to post:', slug);
-            postId = post.id;
+    // Check if replying to a post - extract slug from URL
+    if (!postId) {
+        const urlObj = new URL(note.inReplyTo);
+        const pathParts = urlObj.pathname.split('/').filter(p => p);
+        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+            const segment = pathParts[i];
+            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
+                const post = Posts.getBySlug(segment);
+                if (post) {
+                    if (DEBUG_AP) console.log('[ActivityPub] Comment is reply to post:', segment);
+                    postId = post.id;
+                    break;
+                }
+            }
         }
     }
     
@@ -566,7 +573,7 @@ async function handleFollow(activity) {
         // Send Accept activity
         const acceptActivity = {
             '@context': 'https://www.w3.org/ns/activitystreams',
-            id: `${BASE_URL}/activities/${Date.now()}`,
+            id: `${BLOG_ROOT}/activities/${Date.now()}`,
             type: 'Accept',
             actor: ACTOR_URL,
             to: [actorId],
@@ -640,7 +647,7 @@ router.get('/u/:username/following', (req, res) => {
 });
 
 // Likes collection endpoint for posts
-router.get('/p/:slug/likes', (req, res) => {
+router.get('/:slug/likes', (req, res) => {
     const post = Posts.getBySlug(req.params.slug);
     
     if (!post) {
@@ -667,7 +674,7 @@ router.get('/p/:slug/likes', (req, res) => {
 });
 
 // Shares collection endpoint for posts
-router.get('/p/:slug/shares', (req, res) => {
+router.get('/:slug/shares', (req, res) => {
     const post = Posts.getBySlug(req.params.slug);
     
     if (!post) {
@@ -909,7 +916,7 @@ function getFollowers() {
 
 // Queue an outbound activity for delivery
 function queueOutboundActivity(type, object, recipients = null) {
-    const activityId = `${BASE_URL}/activities/${Date.now()}`;
+    const activityId = `${BLOG_ROOT}/activities/${Date.now()}`;
     const now = new Date().toISOString();
     
     // If no recipients specified, get all followers
@@ -1123,10 +1130,10 @@ function queueActorUpdate(actorData) {
         preferredUsername: actorData.preferredUsername || USERNAME,
         name: actorData.name,
         summary: actorData.summary,
-        inbox: `${BASE_URL}/u/${USERNAME}/inbox`,
-        outbox: `${BASE_URL}/u/${USERNAME}/outbox`,
-        followers: `${BASE_URL}/u/${USERNAME}/followers`,
-        following: `${BASE_URL}/u/${USERNAME}/following`,
+        inbox: `${BLOG_ROOT}/u/${USERNAME}/inbox`,
+        outbox: `${BLOG_ROOT}/u/${USERNAME}/outbox`,
+        followers: `${BLOG_ROOT}/u/${USERNAME}/followers`,
+        following: `${BLOG_ROOT}/u/${USERNAME}/following`,
         publicKey: {
             id: `${ACTOR_URL}#main-key`,
             owner: ACTOR_URL,
