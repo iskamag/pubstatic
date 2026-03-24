@@ -410,7 +410,7 @@ blog.get('/p/:slug', (req, res) => {
         baseUrl: BASE_URL,
         blogPath: BLOG_PATH,
         user: USER,
-        activityPubId: `${BASE_URL}/p/${post.slug}`
+        activityPubId: `${BASE_URL}${BLOG_PATH}/p/${post.slug}`
     });
 });
 
