@@ -422,6 +422,7 @@ blog.get('/new', (req, res) => {
         title: `${USER.name} - Latest Posts`,
         posts,
         baseUrl: BASE_URL,
+        blogPath: BLOG_PATH,
         user: USER
     });
 });
