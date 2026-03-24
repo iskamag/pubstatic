@@ -1072,7 +1072,7 @@ async function verifyHttpSignature(req) {
             return { valid: false, error: 'Invalid actor URL (SSRF blocked)' };
         }
         
-        console.log('[ActivityPub] Fetching actor from:', actorUrl);
+        if (DEBUG_AP) console.log('[ActivityPub] Fetching actor from:', actorUrl);
         const actorResponse = await fetch(actorUrl, {
             headers: { 'Accept': 'application/activity+json' }
         });
@@ -1128,7 +1128,7 @@ async function verifyHttpSignature(req) {
             return { valid: false, error: 'Actor has no public key' };
         }
         
-        console.log('[ActivityPub] Successfully created public key object, type:', publicKeyObject.type, 'asymmetricKeyType:', publicKeyObject.asymmetricKeyType);
+        if (DEBUG_AP) console.log('[ActivityPub] Key object created - type:', publicKeyObject.type, 'algorithm:', publicKeyObject.asymmetricKeyType);
         
         // Verify digest if present (required for POST requests with body)
         if (digestHeader) {
@@ -1157,7 +1157,7 @@ async function verifyHttpSignature(req) {
         const urlObj = new URL(`${proto}://${host}${req.originalUrl}`);
         const requestTarget = `${req.method.toLowerCase()} ${urlObj.pathname}`;
         
-        console.log('[ActivityPub] Protocol:', proto, 'Host:', host, 'Path:', urlObj.pathname);
+        if (DEBUG_AP) console.log('[ActivityPub] Protocol:', proto, 'Host:', host, 'Path:', urlObj.pathname);
         
         const signingParts = [];
         for (const header of headersList) {
@@ -1177,7 +1177,7 @@ async function verifyHttpSignature(req) {
         }
         
         const signingString = signingParts.join('\n');
-        console.log('[ActivityPub] Signing string:', signingString);
+        if (DEBUG_AP) console.log('[ActivityPub] Signing string:', signingString);
         
         const signatureBuffer = Buffer.from(sigParts.signature, 'base64');
         const keyType = publicKeyObject.asymmetricKeyType || 'rsa';
@@ -1196,7 +1196,7 @@ async function verifyHttpSignature(req) {
                     isValid = crypto.verify(algo, Buffer.from(signingString), publicKeyObject, signatureBuffer);
                 }
                 if (isValid) {
-                    console.log('[ActivityPub] Signature verified with algorithm:', algo || 'ed25519');
+                    if (DEBUG_AP) console.log('[ActivityPub] Signature verified with algorithm:', algo || 'ed25519');
                     break;
                 }
             } catch (e) {
