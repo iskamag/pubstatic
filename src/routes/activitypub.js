@@ -334,12 +334,29 @@ router.post('/u/:username/inbox', async (req, res) => {
 async function handleLike(activity) {
     const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
     
-    // Extract slug from URL regardless of domain (supports both old and new URLs)
-    const match = objectUrl.match(/\/p\/([^\/\?#]+)/);
+    // Extract slug from URL - posts are at /slug
+    let slug = null;
+    try {
+        const urlObj = new URL(objectUrl);
+        const pathParts = urlObj.pathname.split('/').filter(p => p);
+        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+            const segment = pathParts[i];
+            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
+                const post = Posts.getBySlug(segment);
+                if (post) {
+                    slug = segment;
+                    break;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[ActivityPub] Invalid object URL:', objectUrl);
+        return;
+    }
     
-    if (!match) return;
+    if (!slug) return;
     
-    const slug = match[1];
     const post = Posts.getBySlug(slug);
     if (!post) return;
     
@@ -360,12 +377,29 @@ async function handleLike(activity) {
 async function handleAnnounce(activity) {
     const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
     
-    // Extract slug from URL regardless of domain (supports both old and new URLs)
-    const match = objectUrl.match(/\/p\/([^\/\?#]+)/);
+    // Extract slug from URL - posts are at /slug
+    let slug = null;
+    try {
+        const urlObj = new URL(objectUrl);
+        const pathParts = urlObj.pathname.split('/').filter(p => p);
+        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+            const segment = pathParts[i];
+            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
+                const post = Posts.getBySlug(segment);
+                if (post) {
+                    slug = segment;
+                    break;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[ActivityPub] Invalid object URL:', objectUrl);
+        return;
+    }
     
-    if (!match) return;
+    if (!slug) return;
     
-    const slug = match[1];
     const post = Posts.getBySlug(slug);
     if (!post) return;
     
