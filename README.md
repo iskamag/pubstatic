@@ -161,7 +161,7 @@ ActivityPub comments support:
 | `/p/:slug` | GET | Post (HTML or ActivityPub JSON) |
 | `/p/:slug/likes` | GET | Likes collection |
 | `/p/:slug/shares` | GET | Shares collection |
-| `/p/new` | GET | Embeddable latest posts (for iframe embedding) |
+| `/new` | GET | Embeddable latest posts (for iframe embedding) |
 | `/rss.xml` | GET | RSS feed |
 
 ## Development
@@ -184,13 +184,27 @@ The server watches `content/posts/` for file changes and automatically:
 
 ## Embedding Latest Posts
 
-The `/p/new` endpoint provides a condensed, self-contained HTML page showing the 3 latest posts. It's designed to be embedded in other websites via iframe:
+The `/new` endpoint provides a condensed, self-contained HTML page showing the latest posts. It's designed to be embedded in other websites via iframe:
 
 ```html
-<iframe src="https://yourblog.com/p/new" width="100%" height="300" loading="lazy"></iframe>
+<iframe src="https://yourblog.com/new" width="100%" height="300" loading="lazy"></iframe>
 ```
 
-Features:
+**URL Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `?n=3` | `2` | Number of posts to display (1-10, capped) |
+
+**Examples:**
+- `/new` - Shows 2 latest posts (default)
+- `/new?n=1` - Shows 1 post
+- `/new?n=5` - Shows 5 posts
+- `/new?n=100` - Capped at 10 posts
+
+**Note:** If using `BLOG_PATH=/posts`, the embed endpoint would be at `/posts/new`.
+
+**Features:**
 - Condensed format: title, date, excerpt (2-line clamp), interactions
 - Self-contained styling with light/dark mode support
 - Transparent background for seamless integration

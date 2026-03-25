@@ -112,13 +112,55 @@ test.describe('Embed Endpoint', () => {
         await expect(page.locator('.embed-container')).toBeVisible();
     });
 
-    test('embed displays latest posts', async ({ page }) => {
+    test('embed displays latest posts (default is 2)', async ({ page }) => {
         await page.goto('/new');
         
         // Should show post cards
         const posts = await page.locator('.post-card').count();
         expect(posts).toBeGreaterThan(0);
-        expect(posts).toBeLessThanOrEqual(3);
+        expect(posts).toBeLessThanOrEqual(2);
+    });
+
+    test('embed respects ?n=1 parameter', async ({ page }) => {
+        await page.goto('/new?n=1');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(1);
+    });
+
+    test('embed respects ?n=5 parameter', async ({ page }) => {
+        await page.goto('/new?n=5');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(5);
+    });
+
+    test('embed caps at maximum of 10 posts', async ({ page }) => {
+        await page.goto('/new?n=100');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(10);
+    });
+
+    test('embed defaults to 2 for invalid ?n values', async ({ page }) => {
+        await page.goto('/new?n=abc');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(2);
+    });
+
+    test('embed defaults to 2 for negative ?n values', async ({ page }) => {
+        await page.goto('/new?n=-5');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(2);
+    });
+
+    test('embed defaults to 2 for ?n=0', async ({ page }) => {
+        await page.goto('/new?n=0');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(2);
     });
 
     test('embed has correct structure', async ({ page }) => {

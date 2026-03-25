@@ -261,7 +261,9 @@ blog.get('/', async (req, res) => {
 
 // Embeddable "new posts" endpoint - MUST be before /:slug
 blog.get('/new', (req, res) => {
-    const posts = Posts.getAll(3, 0);
+    const requestedCount = parseInt(req.query.n) || 2;
+    const count = Math.max(1, Math.min(requestedCount, 10)); // Clamp between 1 and 10
+    const posts = Posts.getAll(count, 0);
     
     res.render('embed', {
         title: `${USER.name} - Latest Posts`,
