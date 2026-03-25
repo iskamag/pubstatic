@@ -57,6 +57,25 @@
         .post-stats span {
             margin-right: 12px;
         }
+        .post-tags {
+            margin-top: 6px;
+        }
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-right: 4px;
+            text-decoration: none;
+        }
+        .tag.pinned {
+            background: #e67e22;
+            color: #fff;
+        }
+        .tag:not(.pinned) {
+            background: #f0f0f0;
+            color: #666;
+        }
         @media (prefers-color-scheme: dark) {
             body { background: transparent; color: #e5e5e5; }
             .post-title a { color: #e5e5e5; }
@@ -65,6 +84,8 @@
             .post-excerpt { color: #bbb; }
             .post-stats { color: #888; }
             .post-card { border-color: #333; }
+            .tag.pinned { background: #d35400; }
+            .tag:not(.pinned) { background: #333; color: #aaa; }
         }
     </style>
 </head>
@@ -88,6 +109,14 @@
             <% if (post.excerpt) { %>
             <p class="post-excerpt"><%= post.excerpt %></p>
             <% } %>
+            <div class="post-tags">
+                <% if (pinnedSlugs.includes(post.slug)) { %>
+                <a href="<%= bp %>tag/pinned" class="tag pinned">#pinned</a>
+                <% } %>
+                <% post.tags.forEach(tag => { %>
+                <a href="<%= bp %>tag/<%= tag %>" class="tag">#<%= tag %></a>
+                <% }); %>
+            </div>
             <div class="post-stats">
                 <span>❤️ <%= post.likes_count || 0 %></span>
                 <span>💬 <%= post.comments_count || 0 %></span>

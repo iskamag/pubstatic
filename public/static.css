@@ -157,6 +157,28 @@ main {
     border-color: var(--accent-green);
 }
 
+.tag.pinned {
+    background: var(--accent-orange);
+    color: white;
+    border-color: var(--accent-orange);
+}
+
+.tag.pinned-nav {
+    background: var(--bg-secondary);
+    color: var(--accent-orange);
+    border-color: var(--accent-orange);
+}
+
+.tag.pinned-nav:hover {
+    background: var(--accent-orange);
+    color: white;
+}
+
+.tag.pinned-nav.active {
+    background: var(--accent-orange);
+    color: white;
+}
+
 /* Posts List */
 .posts-list {
     display: flex;

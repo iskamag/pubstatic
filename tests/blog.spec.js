@@ -1420,7 +1420,7 @@ test.describe.serial('Pinned Posts', () => {
         
         fs.writeFileSync(pinnedFile, `<!--
 title: Pinned Test Post ${uniqueId}
-tags: test, pinned
+tags: test
 -->
 <article><p>Pinned content</p></article>`);
         
@@ -1577,6 +1577,201 @@ tags: test
         expect(firstPostTitle).toContain(`Comment Test Post ${uniqueId}`);
         
         if (fs.existsSync(validFile)) fs.unlinkSync(validFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinned posts show a visual tag in /new endpoint', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `tag-test-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Tag Test Post ${uniqueId}
+tags: test
+-->
+<article><p>Tag test content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const pinnedTag = page.locator('.tag.pinned').first();
+        await expect(pinnedTag).toBeVisible();
+        await expect(pinnedTag).toContainText('pinned');
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+test('non-pinned posts do not show pinned tag', async ({ page }) => {
+        const uniqueId = Date.now();
+        const nonPinnedSlug = `not-pinned-${uniqueId}`;
+        const nonPinnedFile = path.join(POSTS_DIR, `${nonPinnedSlug}.html`);
+        
+        fs.writeFileSync(nonPinnedFile, `<!--
+title: Not Pinned Post ${uniqueId}
+tags: test
+-->
+<article><p>Not pinned content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${nonPinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, '');
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const pinnedTags = await page.locator('.tag.pinned').count();
+        expect(pinnedTags).toBe(0);
+        
+        if (fs.existsSync(nonPinnedFile)) fs.unlinkSync(nonPinnedFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinning a post does not modify its tags', async ({ page }) => {
+        const uniqueId = Date.now();
+        const postSlug = `pin-tag-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        fs.writeFileSync(postFile, `<!--
+title: Pin Tag Test ${uniqueId}
+tags: test, original
+excerpt: Original excerpt
+-->
+<article><p>Pin tag content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        await page.goto(`/${postSlug}`);
+        const originalTags = await page.locator('.post-tags').textContent();
+        expect(originalTags).toContain('#test');
+        expect(originalTags).toContain('#original');
+        expect(originalTags).not.toContain('#pinned');
+        
+        fs.writeFileSync(PINNED_FILE, `${postSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.reload();
+        
+        const tagsAfterPin = await page.locator('.post-tags').textContent();
+        expect(tagsAfterPin).toContain('#test');
+        expect(tagsAfterPin).toContain('#original');
+        expect(tagsAfterPin).toContain('#pinned');
+        
+        // Verify the "pinned" tag is still there after unpinning
+        fs.writeFileSync(PINNED_FILE, '');
+        await page.request.post('/api/sync-pinned');
+        await page.reload();
+        
+        const tagsAfterUnpin = await page.locator('.post-tags').textContent();
+        expect(tagsAfterUnpin).toContain('#test');
+        expect(tagsAfterUnpin).toContain('#original');
+        expect(tagsAfterUnpin).not.toContain('#pinned');
+        
+        if (fs.existsSync(postFile)) fs.unlinkSync(postFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('/tag/pinned shows all pinned posts', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `pinned-tag-page-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Pinned Tag Page Test ${uniqueId}
+tags: test
+-->
+<article><p>Pinned tag page content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/tag/pinned');
+        
+        const pageContent = await page.content();
+        expect(pageContent).toContain(`Pinned Tag Page Test ${uniqueId}`);
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinned posts show tag on homepage', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `homepage-pin-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Homepage Pinned Post ${uniqueId}
+tags: test
+-->
+<article><p>Homepage pinned content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+await page.goto('/');
+        
+        const pinnedTag = page.locator('.tag.pinned').first();
+        await expect(pinnedTag).toBeVisible();
+        await expect(pinnedTag).toContainText('pinned');
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinned posts show tag on individual post page', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `postpage-pin-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Post Page Pinned ${uniqueId}
+tags: test
+-->
+<article><p>Post page pinned content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto(`/${pinnedSlug}`);
+        
+        const pinnedTag = page.locator('.tag.pinned').first();
+        await expect(pinnedTag).toBeVisible();
+        await expect(pinnedTag).toContainText('pinned');
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
         fs.writeFileSync(PINNED_FILE, 'welcome\n');
         await page.request.post('/api/sync-pinned');
     });

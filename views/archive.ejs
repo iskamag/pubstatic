@@ -1,12 +1,15 @@
 <% const bp = blogPath && blogPath !== '' ? blogPath + '/' : '/'; %>
 <section class="hero">
     <h1><%= monthName %> <%= currentYear %></h1>
-    <% if (tags.length > 0) { %>
+    <% if (tags.length > 0 || pinnedSlugs.length > 0) { %>
     <nav class="tags-nav">
         <span class="tags-label">Tags:</span>
         <% tags.forEach(tag => { %>
         <a href="<%= bp %>tag/<%= tag %>" class="tag">#<%= tag %></a>
         <% }); %>
+        <% if (pinnedSlugs.length > 0) { %>
+        <a href="<%= bp %>tag/pinned" class="tag pinned-nav">#pinned</a>
+        <% } %>
     </nav>
     <% } %>
 </section>
@@ -30,13 +33,14 @@
                 }) %>
             </time>
             <p class="post-excerpt"><%= post.excerpt %></p>
-            <% if (post.tags.length > 0) { %>
             <div class="post-tags">
+                <% if (pinnedSlugs.includes(post.slug)) { %>
+                <a href="<%= bp %>tag/pinned" class="tag pinned">#pinned</a>
+                <% } %>
                 <% post.tags.forEach(tag => { %>
                 <a href="<%= bp %>tag/<%= tag %>" class="tag">#<%= tag %></a>
                 <% }); %>
             </div>
-            <% } %>
             <div class="post-stats">
                 <span class="stat">❤️ <%= post.likes_count %></span>
                 <span class="stat">💬 <%= post.comments_count %></span>

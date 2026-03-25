@@ -262,11 +262,15 @@ blog.get('/', async (req, res) => {
     const tags = Posts.getTags();
     const months = Posts.getMonths();
     
+    const pinned = Posts.getPinned();
+    const pinnedSlugs = new Set(pinned.map(p => p.slug));
+    
     res.render('index', {
         title: USER.name,
         posts,
         tags,
         months,
+        pinnedSlugs: [...pinnedSlugs],
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
         user: USER,
@@ -324,11 +328,15 @@ blog.get('/archive/:year/:month', (req, res) => {
     const tags = Posts.getTags();
     const months = Posts.getMonths();
     
+    const pinned = Posts.getPinned();
+    const pinnedSlugs = pinned.map(p => p.slug);
+    
     res.render('archive', {
         title: `${MONTH_NAMES[month - 1]} ${year} - ${USER.name}`,
         posts,
         tags,
         months,
+        pinnedSlugs,
         currentYear: year,
         currentMonth: month,
         monthName: MONTH_NAMES[month - 1],
@@ -351,11 +359,21 @@ blog.get('/tag/:tag', (req, res) => {
     const limit = 10;
     const offset = (page - 1) * limit;
     
-    const posts = Posts.getByTag(tag, limit, offset);
-    const totalPosts = Posts.countByTag(tag);
+    let posts, totalPosts;
+    
+    if (tag === 'pinned') {
+        const pinned = Posts.getPinned();
+        posts = pinned.slice(offset, offset + limit);
+        totalPosts = pinned.length;
+    } else {
+        posts = Posts.getByTag(tag, limit, offset);
+        totalPosts = Posts.countByTag(tag);
+    }
+    
     const totalPages = Math.ceil(totalPosts / limit);
     const allTags = Posts.getTags();
     const months = Posts.getMonths();
+    const pinnedSlugs = Posts.getPinned().map(p => p.slug);
     
     res.render('tag', {
         title: `Tag: ${tag} - ${USER.name}`,
@@ -363,6 +381,7 @@ blog.get('/tag/:tag', (req, res) => {
         tags: allTags,
         months,
         currentTag: tag,
+        pinnedSlugs,
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
         user: USER,
@@ -442,6 +461,8 @@ blog.get('/:slug', (req, res, next) => {
     const comments = Posts.getComments(post.id);
     const likes = Posts.getLikes(post.id);
     const shares = Posts.getShares(post.id);
+    const pinned = Posts.getPinned();
+    const isPinned = pinned.some(p => p.slug === post.slug);
     
     res.render('post', {
         title: `${post.title} - ${USER.name}`,
@@ -449,6 +470,7 @@ blog.get('/:slug', (req, res, next) => {
         comments,
         likes,
         shares,
+        isPinned: isPinned,
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
         user: USER,

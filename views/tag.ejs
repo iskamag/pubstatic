@@ -6,6 +6,9 @@
         <% tags.forEach(tag => { %>
         <a href="<%= tag === currentTag ? bp : bp + 'tag/' + tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
         <% }); %>
+        <% if (pinnedSlugs.length > 0) { %>
+        <a href="<%= bp %>tag/pinned" class="tag pinned-nav <%= currentTag === 'pinned' ? 'active' : '' %>">#pinned</a>
+        <% } %>
     </nav>
 </section>
 
@@ -28,13 +31,14 @@
                 }) %>
             </time>
             <p class="post-excerpt"><%= post.excerpt %></p>
-            <% if (post.tags.length > 0) { %>
             <div class="post-tags">
+                <% if (pinnedSlugs.includes(post.slug)) { %>
+                <a href="<%= bp %>tag/pinned" class="tag <%= currentTag === 'pinned' ? 'active' : '' %> pinned">#pinned</a>
+                <% } %>
                 <% post.tags.forEach(tag => { %>
                 <a href="<%= bp %>tag/<%= tag %>" class="tag <%= tag === currentTag ? 'active' : '' %>">#<%= tag %></a>
                 <% }); %>
             </div>
-            <% } %>
             <div class="post-stats">
                 <span class="stat">❤️ <%= post.likes_count %></span>
                 <span class="stat">💬 <%= post.comments_count %></span>
