@@ -14,23 +14,6 @@ const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1'
 
 const app = express();
 
-// Debug logging for ActivityPub requests
-if (DEBUG_AP) {
-    app.use((req, res, next) => {
-        console.log('\n[Server] ========== REQUEST START ==========');
-        console.log('[Server] Time:', new Date().toISOString());
-        console.log('[Server] Method:', req.method);
-        console.log('[Server] URL:', req.originalUrl);
-        console.log('[Server] Path:', req.path);
-        console.log('[Server] Host:', req.get('Host'));
-        console.log('[Server] Content-Type:', req.get('Content-Type'));
-        console.log('[Server] Content-Length:', req.get('Content-Length'));
-        console.log('[Server] User-Agent:', req.get('User-Agent'));
-        console.log('[Server] =========================================');
-        next();
-    });
-}
-
 // Setup view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
@@ -47,22 +30,27 @@ app.use(express.json({
     },
     verify: (req, res, buf) => {
         req.rawBody = buf;
-    },
-    limit: '10mb'
+    }
 }));
 
-// Error handler for body parsing errors
-app.use((err, req, res, next) => {
-    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-        console.error('[Server] JSON parsing error:', err.message);
-        console.error('[Server] Content-Type:', req.get('Content-Type'));
-        console.error('[Server] Body preview:', req.rawBody ? req.rawBody.toString().substring(0, 200) : 'none');
-        return res.status(400).json({ error: 'Invalid JSON' });
-    }
-    next(err);
-});
-
 app.use(express.urlencoded({ extended: true }));
+
+// Debug logging for ActivityPub requests
+if (DEBUG_AP) {
+    app.use((req, res, next) => {
+        console.log('\n[Server] ========== REQUEST START ==========');
+        console.log('[Server] Time:', new Date().toISOString());
+        console.log('[Server] Method:', req.method);
+        console.log('[Server] URL:', req.originalUrl);
+        console.log('[Server] Path:', req.path);
+        console.log('[Server] Host:', req.get('Host'));
+        console.log('[Server] Content-Type:', req.get('Content-Type'));
+        console.log('[Server] Content-Length:', req.get('Content-Length'));
+        console.log('[Server] User-Agent:', req.get('User-Agent'));
+        console.log('[Server] =========================================');
+        next();
+    });
+}
 
 // WebFinger - MUST be at root for federation discovery
 function localhostOnly(req, res, next) {
@@ -87,102 +75,6 @@ function localhostOnly(req, res, next) {
     }
     
     next();
-}
-
-// Test/sync endpoints (only available in test mode AND localhost only)
-if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
-    // Apply localhost-only restriction to all test APIs
-    app.use('/api', localhostOnly);
-    
-    app.post('/api/sync-post', express.json(), (req, res) => {
-        const { filename } = req.body;
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename required' });
-        }
-        const filePath = path.join(__dirname, '..', 'content', 'posts', filename);
-        const post = syncPostFile(filePath);
-        if (post) {
-            res.json({ success: true, post });
-        } else {
-            res.status(404).json({ success: false, error: 'File not found' });
-        }
-    });
-    
-    app.post('/api/scan-posts', (req, res) => {
-        scanExistingFiles();
-        res.json({ success: true });
-    });
-
-    // Test endpoints for federation testing
-    app.post('/api/add-follower', (req, res) => {
-        const { actor_id, actor_url, inbox_url } = req.body;
-        if (!actor_id || !inbox_url) {
-            return res.status(400).json({ error: 'actor_id and inbox_url required' });
-        }
-
-        try {
-            const stmt = db.prepare(`
-                INSERT OR REPLACE INTO followers (actor_id, actor_url, inbox_url, followed_at)
-                VALUES (?, ?, ?, ?)
-            `);
-            stmt.run(actor_id, actor_url || actor_id, inbox_url, new Date().toISOString());
-            res.json({ success: true, message: 'Follower added' });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    app.post('/api/remove-follower', (req, res) => {
-        const { actor_id } = req.body;
-        if (!actor_id) {
-            return res.status(400).json({ error: 'actor_id required' });
-        }
-
-        try {
-            const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
-            stmt.run(actor_id);
-            res.json({ success: true, message: 'Follower removed' });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    app.get('/api/outbound-activities', (req, res) => {
-        try {
-            const stmt = db.prepare(`
-                SELECT * FROM outbound_activities
-                ORDER BY created_at DESC
-                LIMIT 50
-            `);
-            const activities = stmt.all();
-            res.json({ activities });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    app.post('/api/clear-outbound-activities', (req, res) => {
-        try {
-            db.prepare('DELETE FROM outbound_activities').run();
-            res.json({ success: true, message: 'Outbound activities cleared' });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    app.post('/api/sync-user-settings', (req, res) => {
-        try {
-            const watcher = require('./watcher');
-            if (watcher.syncUserSettings) {
-                watcher.syncUserSettings();
-                res.json({ success: true, message: 'User settings synced' });
-            } else {
-                res.status(500).json({ error: 'syncUserSettings not available' });
-            }
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
 }
 
 // WebFinger endpoint
@@ -223,6 +115,117 @@ const blog = express.Router();
 blog.use('/static', express.static(path.join(__dirname, '..', 'public')));
 blog.use('/pfp.png', express.static(path.join(__dirname, '..', 'public', 'pfp.png')));
 blog.use('/static.css', express.static(path.join(__dirname, '..', 'public', 'static.css')));
+
+// API routes under BLOG_PATH (localhost only in production, always available in test)
+if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
+    blog.use('/api', localhostOnly);
+
+    blog.post('/api/sync-post', express.json(), (req, res) => {
+    const { filename } = req.body;
+    if (!filename) {
+        return res.status(400).json({ error: 'Filename required' });
+    }
+    
+    // Extract and validate slug from filename
+    const slug = filename.replace(/\.html$/, '');
+    const Posts = require('./models/posts');
+    const slugValidation = Posts.isValidSlug(slug);
+    if (!slugValidation.valid) {
+        return res.status(400).json({ success: false, error: `Invalid slug: ${slugValidation.error}` });
+    }
+    
+    const filePath = path.join(__dirname, '..', 'content', 'posts', filename);
+    try {
+        const post = syncPostFile(filePath);
+        if (post) {
+            res.json({ success: true, post });
+        } else {
+            res.status(404).json({ success: false, error: 'File not found' });
+        }
+    } catch (err) {
+        if (err.message.startsWith('Invalid slug:')) {
+            return res.status(400).json({ success: false, error: err.message });
+        }
+        console.error('[API] Error syncing post:', err.message);
+        res.status(500).json({ success: false, error: 'Internal error' });
+    }
+});
+
+blog.post('/api/scan-posts', (req, res) => {
+    scanExistingFiles();
+    res.json({ success: true });
+});
+
+blog.post('/api/add-follower', (req, res) => {
+    const { actor_id, actor_url, inbox_url } = req.body;
+    if (!actor_id || !inbox_url) {
+        return res.status(400).json({ error: 'actor_id and inbox_url required' });
+    }
+
+    try {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO followers (actor_id, actor_url, inbox_url, followed_at)
+            VALUES (?, ?, ?, ?)
+        `);
+        stmt.run(actor_id, actor_url || actor_id, inbox_url, new Date().toISOString());
+        res.json({ success: true, message: 'Follower added' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+blog.post('/api/remove-follower', (req, res) => {
+    const { actor_id } = req.body;
+    if (!actor_id) {
+        return res.status(400).json({ error: 'actor_id required' });
+    }
+
+    try {
+        const stmt = db.prepare('DELETE FROM followers WHERE actor_id = ?');
+        stmt.run(actor_id);
+        res.json({ success: true, message: 'Follower removed' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+blog.get('/api/outbound-activities', (req, res) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT * FROM outbound_activities
+            ORDER BY created_at DESC
+            LIMIT 50
+        `);
+        const activities = stmt.all();
+        res.json({ activities });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+blog.post('/api/clear-outbound-activities', (req, res) => {
+    try {
+        db.prepare('DELETE FROM outbound_activities').run();
+        res.json({ success: true, message: 'Outbound activities cleared' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+blog.post('/api/sync-user-settings', (req, res) => {
+    try {
+        const watcher = require('./watcher');
+        if (watcher.syncUserSettings) {
+            watcher.syncUserSettings();
+            res.json({ success: true, message: 'User settings synced' });
+        } else {
+            res.status(500).json({ error: 'syncUserSettings not available' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+} // end of API routes conditional
 
 // RSS feed under BLOG_PATH
 blog.get('/rss', (req, res) => {

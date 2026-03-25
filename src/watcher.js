@@ -313,49 +313,49 @@ function syncUserSettings() {
 // Manual sync function for testing
 function syncPostFile(filePath) {
     console.log(`[Watcher] Manual sync: ${filePath}`);
-    try {
-        if (fs.existsSync(filePath)) {
-            const post = parsePostFile(filePath);
-            const slug = path.basename(filePath, '.html');
-            const existing = Posts.getBySlug(slug);
-            Posts.createOrUpdate(post);
-            console.log(`[Watcher] Synced post: ${post.slug}`);
-            
-            if (existing) {
-                // Post already existed, this is an edit - queue Update activity
-                const activitypub = getActivityPub();
-                if (activitypub.queuePostUpdate) {
-                    const updatedPost = Posts.getBySlug(post.slug);
-                    if (updatedPost) {
-                        activitypub.queuePostUpdate(updatedPost);
-                        console.log(`[Watcher] Queued Update activity for: ${post.slug}`);
-                    }
-                }
-            } else {
-                // Post didn't exist, this is new - queue Create activity
-                const activitypub = getActivityPub();
-                if (activitypub.queuePostCreate) {
-                    const newPost = Posts.getBySlug(post.slug);
-                    if (newPost) {
-                        activitypub.queuePostCreate(newPost);
-                        console.log(`[Watcher] Queued Create activity for: ${post.slug}`);
-                    }
+    
+    if (fs.existsSync(filePath)) {
+        const post = parsePostFile(filePath);
+        const slug = path.basename(filePath, '.html');
+        const existing = Posts.getBySlug(slug);
+        
+        // This will throw if slug is invalid
+        Posts.createOrUpdate(post);
+        console.log(`[Watcher] Synced post: ${post.slug}`);
+        
+        if (existing) {
+            // Post already existed, this is an edit - queue Update activity
+            const activitypub = getActivityPub();
+            if (activitypub.queuePostUpdate) {
+                const updatedPost = Posts.getBySlug(post.slug);
+                if (updatedPost) {
+                    activitypub.queuePostUpdate(updatedPost);
+                    console.log(`[Watcher] Queued Update activity for: ${post.slug}`);
                 }
             }
-
-            // Update RSS feed
-            updateRSS();
-
-            return post;
         } else {
-            const slug = path.basename(filePath, '.html');
-            Posts.deleteBySlug(slug);
-            console.log(`[Watcher] Deleted post (file not found): ${slug}`);
-            // Update RSS feed after deletion
-            updateRSS();
+            // Post didn't exist, this is new - queue Create activity
+            const activitypub = getActivityPub();
+            if (activitypub.queuePostCreate) {
+                const newPost = Posts.getBySlug(post.slug);
+                if (newPost) {
+                    activitypub.queuePostCreate(newPost);
+                    console.log(`[Watcher] Queued Create activity for: ${post.slug}`);
+                }
+            }
         }
-    } catch (err) {
-        console.error(`[Watcher] Error syncing ${filePath}:`, err.message);
+
+        // Update RSS feed
+        updateRSS();
+
+        return post;
+    } else {
+        const slug = path.basename(filePath, '.html');
+        Posts.deleteBySlug(slug);
+        console.log(`[Watcher] Deleted post (file not found): ${slug}`);
+        // Update RSS feed after deletion
+        updateRSS();
+        return null;
     }
 }
 

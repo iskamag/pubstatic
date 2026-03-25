@@ -123,6 +123,27 @@ tags: tag1, tag2, tag3
 
 The filename (without `.html`) becomes the post slug. For example, `my-first-post.html` will be accessible at `/p/my-first-post`.
 
+### Reserved Slugs
+
+Some slugs are reserved and cannot be used for posts:
+
+**Reserved names:**
+- Route paths: `new`, `u`, `tag`, `archive`, `static`, `rss`, `feed`, `index`
+- API paths: `api`, `admin`, `login`, `logout`, `signin`, `signup`, `register`
+- ActivityPub: `inbox`, `outbox`, `followers`, `following`, `oauth`, `actor`
+- Static assets: `css`, `js`, `images`, `img`, `assets`, `fonts`, `media`, `static`, `pfp`, `static.css`
+- Error pages: `404`, `500`, `error`
+- Security: `security`, `auth`, `password`, `reset`, `confirm`
+- CMS prefixes: `wp-*`, `ghost-*` (e.g., `wp-admin`, `ghost-frontend`)
+- Other: `.well-known`, `favicon`, `sitemap`, `search`
+
+**Slug restrictions:**
+- Cannot contain whitespace
+- Cannot contain path separators (`/` or `\`)
+- Cannot start with a dot (`.`)
+- Can only contain letters, numbers, hyphens, and underscores
+- Maximum 100 characters
+
 ## ActivityPub Federation
 
 ### Following the Blog
@@ -150,9 +171,11 @@ ActivityPub comments support:
 
 ### ActivityPub Endpoints
 
+**Note:** When `BLOG_PATH` is set (e.g., `/posts`), ActivityPub endpoints are mounted under that path. WebFinger remains at the root for discovery.
+
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/.well-known/webfinger` | GET | WebFinger discovery |
+|----------|---------|-------------|
+| `/.well-known/webfinger` | GET | WebFinger discovery (always at root) |
 | `/u/:username` | GET | Actor profile (ActivityPub JSON) |
 | `/u/:username/outbox` | GET | Posts collection |
 | `/u/:username/inbox` | POST | Receive activities |
@@ -161,6 +184,27 @@ ActivityPub comments support:
 | `/p/:slug` | GET | Post (HTML or ActivityPub JSON) |
 | `/p/:slug/likes` | GET | Likes collection |
 | `/p/:slug/shares` | GET | Shares collection |
+
+**With BLOG_PATH=/posts example:**
+- WebFinger: `/.well-known/webfinger`
+- Actor: `/posts/u/username`
+- Inbox: `/posts/u/username/inbox`
+- API: `/posts/api/...`
+
+### Blog API Endpoints
+
+The blog includes API endpoints for post management (available in test mode or when `ENABLE_TEST_API=true`):
+
+| Endpoint | Method | Description |
+|----------|---------|-------------|
+| `/api/sync-post` | POST | Sync a post file to the database |
+| `/api/scan-posts` | POST | Rescan all post files |
+| `/api/add-follower` | POST | Add a follower (for testing) |
+| `/api/remove-follower` | POST | Remove a follower (for testing) |
+| `/api/outbound-activities` | GET | List pending outbound activities |
+| `/api/clear-outbound-activities` | POST | Clear outbound activity queue |
+
+**Note:** API routes are mounted under `BLOG_PATH` and are localhost-only in production.
 | `/new` | GET | Embeddable latest posts (for iframe embedding) |
 | `/rss.xml` | GET | RSS feed |
 

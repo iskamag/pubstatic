@@ -61,7 +61,89 @@ class Posts {
         return post;
     }
 
+    static RESERVED_SLUGS = new Set([
+        // Blog routes
+        'new', 'u', 'tag', 'archive', 'static', 'rss', 'feed', 'index',
+        // API routes
+        'api', 'admin', 'login', 'logout', 'signin', 'signup', 'register',
+        // ActivityPub routes
+        'inbox', 'outbox', 'followers', 'following', 'oauth', 'actor',
+        // Well-known
+        '.well-known',
+        // Error pages
+        '404', '500', 'error', 'errors',
+        // Common static assets/folders
+        'css', 'js', 'images', 'img', 'assets', 'fonts', 'media', 'static',
+        'favicon', 'favicon.ico', 'robots.txt', 'humans.txt', 'manifest.json',
+        'pfp', 'pfp.png', 'static.css',
+        // CMS prefixes
+        'wp-', 'ghost-', 'ghost', 'wordpress',
+        // Security
+        'security', 'auth', 'password', 'reset', 'confirm',
+        // General reserved
+        'page', 'pages', 'post', 'posts', 'comment', 'comments',
+        'search', 'sitemap', 'sitemap.xml', 'feed.xml', 'atom.xml',
+        'robots', 'favicon.png', 'apple-touch-icon', 'apple-touch-icon.png'
+    ]);
+
+    static isValidSlug(slug) {
+        if (!slug || typeof slug !== 'string') {
+            return { valid: false, error: 'Slug is required' };
+        }
+
+        // Check for empty or whitespace-only
+        const trimmedSlug = slug.trim();
+        if (!trimmedSlug) {
+            return { valid: false, error: 'Slug cannot be empty or whitespace' };
+        }
+
+        // Check for whitespace in slug
+        if (slug !== trimmedSlug || /\s/.test(slug)) {
+            return { valid: false, error: 'Slug cannot contain whitespace' };
+        }
+
+        // Check for path separators
+        if (slug.includes('/') || slug.includes('\\')) {
+            return { valid: false, error: 'Slug cannot contain path separators' };
+        }
+
+        // Check for hidden files (starting with .)
+        if (slug.startsWith('.')) {
+            return { valid: false, error: 'Slug cannot start with a dot' };
+        }
+
+        // Check for reserved slugs (exact match)
+        if (this.RESERVED_SLUGS.has(slug.toLowerCase())) {
+            return { valid: false, error: `Slug '${slug}' is reserved` };
+        }
+
+        // Check for reserved prefix matches
+        const lowerSlug = slug.toLowerCase();
+        if (lowerSlug.startsWith('wp-') || lowerSlug.startsWith('ghost-') ||
+            lowerSlug.startsWith('admin') || lowerSlug.startsWith('api/')) {
+            return { valid: false, error: `Slug '${slug}' uses a reserved prefix` };
+        }
+
+        // Check length (reasonable limit)
+        if (slug.length > 100) {
+            return { valid: false, error: 'Slug is too long (max 100 characters)' };
+        }
+
+        // Check for invalid characters
+        if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+            return { valid: false, error: 'Slug can only contain letters, numbers, hyphens, and underscores' };
+        }
+
+        return { valid: true };
+    }
+
     static createOrUpdate({ slug, title, content, excerpt, tags = [], filePath, fileMtime }) {
+        // Validate slug
+        const validation = this.isValidSlug(slug);
+        if (!validation.valid) {
+            throw new Error(`Invalid slug: ${validation.error}`);
+        }
+
         // Calculate content hash to detect actual changes
         const contentHash = crypto.createHash('md5')
             .update(JSON.stringify({ title, content, tags }))

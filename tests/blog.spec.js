@@ -1706,3 +1706,267 @@ tags: test, rss
         expect(body).toContain('rel="self"');
     });
 });
+
+test.describe('Post Slug Validation', () => {
+    const path = require('path');
+    const fs = require('fs');
+    const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+
+    const reservedSlugs = [
+        'new', 'u', 'tag', 'archive', 'static', 'rss', 'feed', 'index',
+        'api', 'admin', 'login', 'logout', 'signin', 'signup',
+        'inbox', 'outbox', 'followers', 'following',
+        '.well-known', '404', '500', 'error',
+        'css', 'js', 'images', 'img', 'assets',
+        'favicon', 'pfp', 'pfp.png', 'static.css',
+        'wp-test', 'ghost-test', 'wp-', 'ghost-'
+    ];
+
+    for (const reservedSlug of reservedSlugs) {
+        test(`rejects post with reserved slug: ${reservedSlug}`, async ({ request }) => {
+            const postSlug = reservedSlug;
+            const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+            const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+            // Create the file
+            fs.writeFileSync(postFile, postContent);
+
+            // Try to sync
+            const response = await request.post('/api/sync-post', {
+                data: { filename: `${postSlug}.html` }
+            });
+
+            const result = await response.json();
+
+            // Should be rejected
+            expect(response.status()).toBe(400);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid slug');
+
+            // Cleanup
+            if (fs.existsSync(postFile)) {
+                fs.unlinkSync(postFile);
+            }
+        });
+    }
+
+    test('rejects post with whitespace in slug', async ({ request }) => {
+        const postSlug = 'my test post';
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        const response = await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(400);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('whitespace');
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('rejects post with path separator in slug', async ({ request }) => {
+        // Note: We can't actually create a file with / in the name, so we test the validation directly
+        // The API should reject any slug containing path separators
+        const postSlug = 'my/test';
+        const postFile = path.join(POSTS_DIR, 'my_test.html'); // Use different filename
+        const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        // Try to sync with the path separator in the filename (which is invalid)
+        const response = await request.post('/api/sync-post', {
+            data: { filename: 'my/test.html' }  // This will be rejected
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(400);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('path separator');
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('rejects post starting with dot', async ({ request }) => {
+        const postSlug = '.hidden';
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        const response = await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(400);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('dot');
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('rejects post with invalid characters', async ({ request }) => {
+        const postSlug = 'my@post!';
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        const response = await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(400);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('letters, numbers, hyphens, and underscores');
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('accepts valid slug with hyphens', async ({ request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `my-valid-post-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postContent = `<!--
+title: Test Post
+tags: test
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        const response = await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(200);
+        expect(result.success).toBe(true);
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('accepts valid slug with underscores', async ({ request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `my_valid_post_${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        const postContent = `<!--
+title: Test Post
+-->
+<article><p>Test content</p></article>`;
+
+        fs.writeFileSync(postFile, postContent);
+
+        const response = await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        const result = await response.json();
+
+        expect(response.status()).toBe(200);
+        expect(result.success).toBe(true);
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+});
+
+test.describe('Root Delegation (BLOG_PATH)', () => {
+    test('WebFinger endpoint is at root', async ({ request }) => {
+        // WebFinger should always be at root, not under BLOG_PATH
+        const response = await request.get('/.well-known/webfinger?resource=acct:admin@localhost:6767');
+        expect(response.status()).toBe(200);
+        const body = await response.json();
+        expect(body.subject).toBe('acct:admin@localhost:6767');
+    });
+
+    test('API routes are accessible', async ({ request }) => {
+        // API routes should be accessible (under blog router in test mode with empty BLOG_PATH)
+        const response = await request.get('/api/outbound-activities');
+        expect([200, 401]).toContain(response.status()); // 200 if authorized, 401 if localhost check failed
+    });
+
+    test('RSS feed is accessible', async ({ request }) => {
+        // RSS should be accessible (blog routes in test mode)
+        const response = await request.get('/rss');
+        expect(response.status()).toBe(200);
+        const body = await response.text();
+        expect(body).toContain('<rss');
+    });
+
+    test('homepage is accessible at /', async ({ request }) => {
+        // Homepage should be at /
+        const response = await request.get('/');
+        expect(response.status()).toBe(200);
+    });
+
+    test('embed page is accessible at /new', async ({ request }) => {
+        // /new endpoint for embeds
+        const response = await request.get('/new');
+        expect(response.status()).toBe(200);
+        const body = await response.text();
+        expect(body).toContain('embed-container');
+    });
+
+    test('activitypub routes are accessible', async ({ request }) => {
+        // ActivityPub actor endpoint should be accessible
+        const response = await request.get('/u/admin');
+        expect(response.status()).toBe(200);
+        const body = await response.json();
+        expect(body.type).toBe('Person');
+        expect(body.preferredUsername).toBe('admin');
+    });
+
+    test('sync-post API requires valid slug', async ({ request }) => {
+        // API should validate slugs
+        const response = await request.post('/api/sync-post', {
+            data: { filename: 'new.html' } // 'new' is a reserved slug
+        });
+        expect(response.status()).toBe(400);
+        const body = await response.json();
+        expect(body.error).toContain('Invalid slug');
+    });
+
+    test('posts are accessible by slug', async ({ request }) => {
+        // Individual post pages should work
+        const response = await request.get('/welcome');
+        expect(response.status()).toBe(200);
+    });
+});
