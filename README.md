@@ -25,9 +25,11 @@ The server runs on http://localhost:6767 by default.
 
 The config reads from environment variables, or .env. Read .env.example carefully. Here are the parameters not written there:
 
-| `RATE_LIMIT_ENABLED` | `true` | Enable/disable rate limiting on inbox |
-| `RATE_LIMIT_MAX` | `100` | Max requests per window per IP |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in milliseconds |
+`RATE_LIMIT_ENABLED   (true)` - Enable/disable rate limiting on inbox
+
+`RATE_LIMIT_MAX       (100)` - Max requests per window per IP
+
+`RATE_LIMIT_WINDOW_MS (60000)` - Rate limit window in milliseconds
 
 ### Debugging ActivityPub
 
