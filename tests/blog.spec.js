@@ -1397,6 +1397,191 @@ tags: test
     });
 });
 
+test.describe.serial('Pinned Posts', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+    const PINNED_FILE = path.join(__dirname, '..', 'content', 'pinned');
+    
+    test.setTimeout(30000);
+    
+    test.beforeAll(async () => {
+        if (!fs.existsSync(POSTS_DIR)) {
+            fs.mkdirSync(POSTS_DIR, { recursive: true });
+        }
+    });
+    
+    test('pinned posts appear first on /new endpoint', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `pinned-test-${uniqueId}`;
+        const regularSlug = `regular-test-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        const regularFile = path.join(POSTS_DIR, `${regularSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Pinned Test Post ${uniqueId}
+tags: test, pinned
+-->
+<article><p>Pinned content</p></article>`);
+        
+        fs.writeFileSync(regularFile, `<!--
+title: Regular Test Post ${uniqueId}
+tags: test
+-->
+<article><p>Regular content</p></article>`);
+        
+        const response = await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${regularSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const firstPostTitle = await page.locator('.post-title a').first().textContent();
+        expect(firstPostTitle).toContain(`Pinned Test Post ${uniqueId}`);
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
+        if (fs.existsSync(regularFile)) fs.unlinkSync(regularFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinned posts are not duplicated when filling /new endpoint', async ({ page }) => {
+        const uniqueId = Date.now();
+        const pinnedSlug = `pinned-dup-${uniqueId}`;
+        const pinnedFile = path.join(POSTS_DIR, `${pinnedSlug}.html`);
+        
+        fs.writeFileSync(pinnedFile, `<!--
+title: Pinned Duplicate Test ${uniqueId}
+tags: test
+-->
+<article><p>Pinned content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${pinnedSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${pinnedSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const posts = await page.locator('.post-title a').allTextContents();
+        const pinnedCount = posts.filter(t => t.includes(`Pinned Duplicate Test ${uniqueId}`)).length;
+        expect(pinnedCount).toBe(1);
+        
+        if (fs.existsSync(pinnedFile)) fs.unlinkSync(pinnedFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('empty pinned file shows only recent posts', async ({ page }) => {
+        const uniqueId = Date.now();
+        const postSlug = `recent-test-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        fs.writeFileSync(postFile, `<!--
+title: Recent Test Post ${uniqueId}
+tags: test
+-->
+<article><p>Recent content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, '');
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const posts = await page.locator('.post-title a').allTextContents();
+        expect(posts.some(t => t.includes(`Recent Test Post ${uniqueId}`))).toBe(true);
+        
+        if (fs.existsSync(postFile)) fs.unlinkSync(postFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('pinned posts respect count limit', async ({ page }) => {
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=1');
+        
+        const posts = await page.locator('.post-card').count();
+        expect(posts).toBeLessThanOrEqual(1);
+    });
+    
+    test('invalid slugs in pinned file are ignored', async ({ page }) => {
+        const uniqueId = Date.now();
+        const validSlug = `valid-pin-${uniqueId}`;
+        const validFile = path.join(POSTS_DIR, `${validSlug}.html`);
+        
+        fs.writeFileSync(validFile, `<!--
+title: Valid Pinned Post ${uniqueId}
+tags: test
+-->
+<article><p>Valid pinned content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${validSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `nonexistent-post-${uniqueId}\n${validSlug}\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const firstPostTitle = await page.locator('.post-title a').first().textContent();
+        expect(firstPostTitle).toContain(`Valid Pinned Post ${uniqueId}`);
+        
+        if (fs.existsSync(validFile)) fs.unlinkSync(validFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+    
+    test('comments in pinned file are ignored', async ({ page }) => {
+        const uniqueId = Date.now();
+        const validSlug = `comment-test-${uniqueId}`;
+        const validFile = path.join(POSTS_DIR, `${validSlug}.html`);
+        
+        fs.writeFileSync(validFile, `<!--
+title: Comment Test Post ${uniqueId}
+tags: test
+-->
+<article><p>Comment test content</p></article>`);
+        
+        await page.request.post('/api/sync-post', {
+            data: { filename: `${validSlug}.html` }
+        });
+        
+        fs.writeFileSync(PINNED_FILE, `${validSlug} # this is a comment\n`);
+        
+        await page.request.post('/api/sync-pinned');
+        
+        await page.goto('/new?n=5');
+        
+        const firstPostTitle = await page.locator('.post-title a').first().textContent();
+        expect(firstPostTitle).toContain(`Comment Test Post ${uniqueId}`);
+        
+        if (fs.existsSync(validFile)) fs.unlinkSync(validFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await page.request.post('/api/sync-pinned');
+    });
+});
+
 test.describe.serial('Actor Profile Federation', () => {
     const fs = require('fs');
     const path = require('path');

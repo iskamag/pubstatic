@@ -10,7 +10,7 @@ A simple blog for your simple website, accesible through the Fediverse.
 - **Tag System**: Organize posts with tags
 - **RSS Feed**: Subscribe via RSS at `/rss.xml`
 - **Org-compatible** Just point your HTML exports to the posts folder!
-- **Featured posts** Embed /new to give the readers a glimpse of your writing.
+- **Featured posts** Embed /new to give the readers a glimpse of your writing. They would see new and pinned posts of your choosing
 
 ## Installation
 
@@ -166,13 +166,16 @@ The server watches `content/posts/` for file changes and automatically:
 - Queues ActivityPub Create/Update activities for federation
 - Removes posts when files are deleted
 
-## Embedding Latest Posts
+## Embedding your posts
 
-The `/new` endpoint provides a condensed, self-contained HTML page showing the latest posts. It's designed to be embedded in other websites via iframe:
+The `/new` endpoint provides a condensed, self-contained HTML page showing the latest and pinned posts. It's designed to be embedded in other websites via iframe:
 
 ```html
 <iframe src="https://yourblog.com/new" width="100%" height="300" loading="lazy"></iframe>
 ```
+
+**Pinning**
+You can pin a post (or several) to the top of your list by writing to `content/pinned`. This is a line-seperated file with # for comments.
 
 **URL Parameters:**
 

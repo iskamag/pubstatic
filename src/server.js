@@ -228,6 +228,20 @@ blog.post('/api/sync-user-settings', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+blog.post('/api/sync-pinned', (req, res) => {
+    try {
+        const watcher = require('./watcher');
+        if (watcher.syncPinnedFile) {
+            watcher.syncPinnedFile();
+            res.json({ success: true, message: 'Pinned file synced' });
+        } else {
+            res.status(500).json({ error: 'syncPinnedFile not available' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 } // end of API routes conditional
 
 // RSS feed under BLOG_PATH
@@ -269,11 +283,19 @@ blog.get('/', async (req, res) => {
 blog.get('/new', (req, res) => {
     const requestedCount = parseInt(req.query.n) || 2;
     const count = Math.max(1, Math.min(requestedCount, 10)); // Clamp between 1 and 10
-    const posts = Posts.getAll(count, 0);
+    
+    const pinned = Posts.getPinned();
+    const pinnedSlugs = new Set(pinned.map(p => p.slug));
+    
+    const recent = Posts.getAll(count + pinned.length, 0);
+    const nonPinned = recent.filter(p => !pinnedSlugs.has(p.slug));
+    
+    const posts = [...pinned, ...nonPinned].slice(0, count);
     
     res.render('embed', {
         title: `${USER.name} - Latest Posts`,
         posts,
+        pinnedSlugs: [...pinnedSlugs],
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
         user: USER,

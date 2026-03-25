@@ -5,6 +5,7 @@ const Posts = require('./models/posts');
 const { updateRSSFile } = require('./rss');
 
 const POSTS_DIR = path.join(__dirname, '..', 'content', 'posts');
+const PINNED_FILE = path.join(__dirname, '..', 'content', 'pinned');
 const USER_SETTINGS_FILE = path.join(__dirname, '..', 'user-settings.json');
 const PFP_FILE = path.join(__dirname, '..', 'public', 'pfp.png');
 
@@ -33,6 +34,28 @@ function loadUserSettings() {
         console.error('[Watcher] Error loading user settings:', err.message);
     }
     return {};
+}
+
+function loadPinnedSlugs() {
+    try {
+        if (fs.existsSync(PINNED_FILE)) {
+            const content = fs.readFileSync(PINNED_FILE, 'utf8');
+            return content.split('\n')
+                .map(line => line.split('#')[0].trim())
+                .filter(line => line.length > 0);
+        }
+    } catch (err) {
+        console.error('[Watcher] Error loading pinned file:', err.message);
+    }
+    return [];
+}
+
+function handlePinnedChange() {
+    console.log('[Watcher] Pinned file changed');
+    const slugs = loadPinnedSlugs();
+    Posts.setPinned(slugs);
+    console.log(`[Watcher] Updated pinned posts: ${slugs.join(', ') || '(none)'}`);
+    updateRSSFile();
 }
 
 function parsePostFile(filePath) {
@@ -159,6 +182,11 @@ function scanExistingFiles() {
     updateRSSFile();
 }
 
+function scanPinnedFile() {
+    console.log('[Watcher] Scanning pinned file...');
+    handlePinnedChange();
+}
+
 function handleUserSettingsChange() {
     console.log('[Watcher] User settings or profile picture changed');
     try {
@@ -187,6 +215,9 @@ function handleUserSettingsChange() {
 function startWatcher() {
     // First, scan existing files
     scanExistingFiles();
+
+    // Scan pinned posts
+    scanPinnedFile();
 
     // Watch the posts directory
     const postsWatcher = chokidar.watch(POSTS_DIR, {
@@ -296,7 +327,30 @@ function startWatcher() {
         })
         .on('error', error => console.error('[Watcher] Settings watcher error:', error));
 
-    return { postsWatcher, settingsWatcher };
+    // Watch pinned file
+    const pinnedWatcher = chokidar.watch(PINNED_FILE, {
+        persistent: true,
+        ignoreInitial: false,
+        awaitWriteFinish: {
+            stabilityThreshold: 300,
+            pollInterval: 100
+        }
+    });
+
+    pinnedWatcher
+        .on('add', filePath => {
+            if (filePath === PINNED_FILE) {
+                handlePinnedChange();
+            }
+        })
+        .on('change', filePath => {
+            if (filePath === PINNED_FILE) {
+                handlePinnedChange();
+            }
+        })
+        .on('error', error => console.error('[Watcher] Pinned watcher error:', error));
+
+    return { postsWatcher, settingsWatcher, pinnedWatcher };
 }
 
 // Manual sync function for user settings (for testing)
@@ -354,4 +408,9 @@ function syncPostFile(filePath) {
     }
 }
 
-module.exports = { startWatcher, parsePostFile, syncPostFile, scanExistingFiles, syncUserSettings };
+function syncPinnedFile() {
+    console.log('[Watcher] Manual sync of pinned file');
+    handlePinnedChange();
+}
+
+module.exports = { startWatcher, parsePostFile, syncPostFile, scanExistingFiles, syncUserSettings, syncPinnedFile };

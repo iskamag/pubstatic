@@ -304,6 +304,31 @@ class Posts {
         `);
         return stmt.all(postId);
     }
+
+    static getPinned() {
+        const stmt = db.prepare(`
+            SELECT p.id, p.slug, p.title, p.content, p.excerpt, p.published_at, p.updated_at, p.tags,
+                COALESCE(l.likes_count, 0) as likes_count,
+                COALESCE(c.comments_count, 0) as comments_count,
+                COALESCE(s.shares_count, 0) as shares_count
+            FROM posts p ${COUNTS_JOIN}
+            WHERE p.pinned = 1
+            ORDER BY p.published_at DESC
+        `);
+        return stmt.all().map(parsePost);
+    }
+
+    static setPinned(slugs) {
+        const now = new Date().toISOString();
+        
+        db.prepare('UPDATE posts SET pinned = 0').run();
+        
+        if (slugs && slugs.length > 0) {
+            const placeholders = slugs.map(() => '?').join(',');
+            const stmt = db.prepare(`UPDATE posts SET pinned = 1, updated_at = ? WHERE slug IN (${placeholders})`);
+            stmt.run(now, ...slugs);
+        }
+    }
 }
 
 module.exports = Posts;

@@ -25,7 +25,8 @@ db.exec(`
         file_path TEXT NOT NULL,
         file_mtime INTEGER NOT NULL,
         content_hash TEXT,
-        tags TEXT -- JSON array of tags
+        tags TEXT, -- JSON array of tags
+        pinned INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS likes (
@@ -110,6 +111,17 @@ db.exec(`
 try {
     db.exec(`ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)`);
     console.log('[DB] Migration: Added parent_id column to comments table');
+} catch (err) {
+    // Column already exists, ignore error
+    if (!err.message.includes('duplicate column')) {
+        console.error('[DB] Migration error:', err.message);
+    }
+}
+
+// Migration: Add pinned column to existing posts table
+try {
+    db.exec(`ALTER TABLE posts ADD COLUMN pinned INTEGER DEFAULT 0`);
+    console.log('[DB] Migration: Added pinned column to posts table');
 } catch (err) {
     // Column already exists, ignore error
     if (!err.message.includes('duplicate column')) {
