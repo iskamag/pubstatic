@@ -1,6 +1,6 @@
 # Pubstatic
 
-A simple blog for your simple website
+A simple blog for your simple website, accesible through the Fediverse.
 
 ## Features
 
