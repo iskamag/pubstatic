@@ -3,6 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const COUNTS_JOIN = `
+    LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
+    LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+    LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id`;
+
+function parsePost(post) {
+    if (post) {
+        post.tags = JSON.parse(post.tags || '[]');
+    }
+    return post;
+}
+
 class Posts {
     static getAll(limit = 10, offset = 0) {
         const stmt = db.prepare(`
@@ -10,17 +22,11 @@ class Posts {
                 COALESCE(l.likes_count, 0) as likes_count,
                 COALESCE(c.comments_count, 0) as comments_count,
                 COALESCE(s.shares_count, 0) as shares_count
-            FROM posts p
-            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            FROM posts p ${COUNTS_JOIN}
             ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
         `);
-        return stmt.all(limit, offset).map(post => ({
-            ...post,
-            tags: JSON.parse(post.tags || '[]')
-        }));
+        return stmt.all(limit, offset).map(parsePost);
     }
 
     static getBySlug(slug) {
@@ -29,17 +35,10 @@ class Posts {
                 COALESCE(l.likes_count, 0) as likes_count,
                 COALESCE(c.comments_count, 0) as comments_count,
                 COALESCE(s.shares_count, 0) as shares_count
-            FROM posts p
-            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            FROM posts p ${COUNTS_JOIN}
             WHERE p.slug = ?
         `);
-        const post = stmt.get(slug);
-        if (post) {
-            post.tags = JSON.parse(post.tags || '[]');
-        }
-        return post;
+        return parsePost(stmt.get(slug));
     }
 
     static getById(id) {
@@ -48,17 +47,10 @@ class Posts {
                 COALESCE(l.likes_count, 0) as likes_count,
                 COALESCE(c.comments_count, 0) as comments_count,
                 COALESCE(s.shares_count, 0) as shares_count
-            FROM posts p
-            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            FROM posts p ${COUNTS_JOIN}
             WHERE p.id = ?
         `);
-        const post = stmt.get(id);
-        if (post) {
-            post.tags = JSON.parse(post.tags || '[]');
-        }
-        return post;
+        return parsePost(stmt.get(id));
     }
 
     static RESERVED_SLUGS = new Set([
@@ -204,17 +196,12 @@ class Posts {
                 COALESCE(s.shares_count, 0) as shares_count
             FROM posts p
             JOIN json_each(p.tags) AS j
-            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            ${COUNTS_JOIN}
             WHERE j.value = ?
             ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
         `);
-        return stmt.all(tag, limit, offset).map(post => ({
-            ...post,
-            tags: JSON.parse(post.tags || '[]')
-        }));
+        return stmt.all(tag, limit, offset).map(parsePost);
     }
     
     static count() {
@@ -243,18 +230,12 @@ class Posts {
                 COALESCE(l.likes_count, 0) as likes_count,
                 COALESCE(c.comments_count, 0) as comments_count,
                 COALESCE(s.shares_count, 0) as shares_count
-            FROM posts p
-            LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
-            LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id
+            FROM posts p ${COUNTS_JOIN}
             WHERE p.published_at >= ? AND p.published_at < ?
             ORDER BY p.published_at DESC
             LIMIT ? OFFSET ?
         `);
-        return stmt.all(startDate, endDate, limit, offset).map(post => ({
-            ...post,
-            tags: JSON.parse(post.tags || '[]')
-        }));
+        return stmt.all(startDate, endDate, limit, offset).map(parsePost);
     }
     
     static countByMonth(year, month) {

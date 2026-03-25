@@ -12,6 +12,9 @@ const db = require('./db');
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
 const app = express();
 
 // Setup view engine
@@ -299,17 +302,14 @@ blog.get('/archive/:year/:month', (req, res) => {
     const tags = Posts.getTags();
     const months = Posts.getMonths();
     
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                        'July', 'August', 'September', 'October', 'November', 'December'];
-    
     res.render('archive', {
-        title: `${monthNames[month - 1]} ${year} - ${USER.name}`,
+        title: `${MONTH_NAMES[month - 1]} ${year} - ${USER.name}`,
         posts,
         tags,
         months,
         currentYear: year,
         currentMonth: month,
-        monthName: monthNames[month - 1],
+        monthName: MONTH_NAMES[month - 1],
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
         user: USER,

@@ -77,6 +77,55 @@ function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildArticleObject(post, counts = {}) {
+    return {
+        id: postUrl(post.slug),
+        type: 'Article',
+        attributedTo: ACTOR_URL,
+        content: post.content,
+        name: post.title,
+        published: post.published_at,
+        updated: post.updated_at,
+        url: postUrl(post.slug),
+        to: ['https://www.w3.org/ns/activitystreams#Public'],
+        cc: [USER.followers],
+        likes: {
+            id: postLikesUrl(post.slug),
+            type: 'OrderedCollection',
+            totalItems: counts.likes ?? post.likes_count ?? 0
+        },
+        shares: {
+            id: postSharesUrl(post.slug),
+            type: 'OrderedCollection',
+            totalItems: counts.shares ?? post.shares_count ?? 0
+        },
+        tag: post.tags.map(tag => ({
+            type: 'Hashtag',
+            name: `#${tag}`,
+            href: tagUrl(tag)
+        }))
+    };
+}
+
+const SKIP_PATHS = new Set(['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies']);
+
+function extractSlugFromUrl(objectUrl) {
+    try {
+        const urlObj = new URL(objectUrl);
+        const pathParts = urlObj.pathname.split('/').filter(p => p);
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+            const segment = pathParts[i];
+            if (segment && !SKIP_PATHS.has(segment) && !segment.match(/^\d{4}$/)) {
+                const post = Posts.getBySlug(segment);
+                if (post) return { slug: segment, post };
+            }
+        }
+    } catch (e) {
+        console.error('[ActivityPub] Invalid object URL:', objectUrl);
+    }
+    return null;
+}
+
 // Load or generate keys
 function loadOrGenerateKeys() {
     // Try to load existing keys
@@ -284,33 +333,7 @@ router.get('/u/:username/outbox', (req, res) => {
         actor: ACTOR_URL,
         to: ['https://www.w3.org/ns/activitystreams#Public'],
         cc: [USER.followers],
-        object: {
-            id: postUrl(post.slug),
-            type: 'Article',
-            attributedTo: ACTOR_URL,
-            content: post.content,
-            name: post.title,
-            published: post.published_at,
-            updated: post.updated_at,
-            url: postUrl(post.slug),
-            to: ['https://www.w3.org/ns/activitystreams#Public'],
-            cc: [USER.followers],
-            likes: {
-                id: postLikesUrl(post.slug),
-                type: 'OrderedCollection',
-                totalItems: post.likes_count || 0
-            },
-            shares: {
-                id: postSharesUrl(post.slug),
-                type: 'OrderedCollection',
-                totalItems: post.shares_count || 0
-            },
-            tag: post.tags.map(tag => ({
-                type: 'Hashtag',
-                name: `#${tag}`,
-                href: tagUrl(tag)
-            }))
-        }
+        object: buildArticleObject(post)
     }));
     
     res.set('Content-Type', 'application/activity+json');
@@ -457,90 +480,31 @@ router.post('/u/:username/inbox', async (req, res) => {
     }
 });
 
-async function handleLike(activity) {
+async function handleReaction(activity, tableName) {
     const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
-    
-    // Extract slug from URL - posts are at /slug
-    let slug = null;
-    try {
-        const urlObj = new URL(objectUrl);
-        const pathParts = urlObj.pathname.split('/').filter(p => p);
-        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
-        for (let i = pathParts.length - 1; i >= 0; i--) {
-            const segment = pathParts[i];
-            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
-                const post = Posts.getBySlug(segment);
-                if (post) {
-                    slug = segment;
-                    break;
-                }
-            }
-        }
-    } catch (e) {
-        console.error('[ActivityPub] Invalid object URL:', objectUrl);
-        return;
-    }
-    
-    if (!slug) return;
-    
-    const post = Posts.getBySlug(slug);
-    if (!post) return;
-    
+    const result = extractSlugFromUrl(objectUrl);
+    if (!result) return;
+
     const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
-    
+
     try {
         const stmt = db.prepare(`
-            INSERT OR IGNORE INTO likes (post_id, actor_id, actor_url, created_at, activity_id)
+            INSERT OR IGNORE INTO ${tableName} (post_id, actor_id, actor_url, created_at, activity_id)
             VALUES (?, ?, ?, ?, ?)
         `);
-        stmt.run(post.id, actorId, actorId, new Date().toISOString(), activity.id);
-        console.log(`[ActivityPub] Added like from ${actorId} on ${slug}`);
+        stmt.run(result.post.id, actorId, actorId, new Date().toISOString(), activity.id);
+        console.log(`[ActivityPub] Added ${tableName} from ${actorId} on ${result.slug}`);
     } catch (err) {
-        console.error('[ActivityPub] Error handling like:', err.message);
+        console.error(`[ActivityPub] Error handling ${tableName}:`, err.message);
     }
 }
 
+async function handleLike(activity) {
+    await handleReaction(activity, 'likes');
+}
+
 async function handleAnnounce(activity) {
-    const objectUrl = typeof activity.object === 'string' ? activity.object : activity.object.id;
-    
-    // Extract slug from URL - posts are at /slug
-    let slug = null;
-    try {
-        const urlObj = new URL(objectUrl);
-        const pathParts = urlObj.pathname.split('/').filter(p => p);
-        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
-        for (let i = pathParts.length - 1; i >= 0; i--) {
-            const segment = pathParts[i];
-            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
-                const post = Posts.getBySlug(segment);
-                if (post) {
-                    slug = segment;
-                    break;
-                }
-            }
-        }
-    } catch (e) {
-        console.error('[ActivityPub] Invalid object URL:', objectUrl);
-        return;
-    }
-    
-    if (!slug) return;
-    
-    const post = Posts.getBySlug(slug);
-    if (!post) return;
-    
-    const actorId = typeof activity.actor === 'string' ? activity.actor : activity.actor.id;
-    
-    try {
-        const stmt = db.prepare(`
-            INSERT OR IGNORE INTO shares (post_id, actor_id, actor_url, created_at, activity_id)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-        stmt.run(post.id, actorId, actorId, new Date().toISOString(), activity.id);
-        console.log(`[ActivityPub] Added share from ${actorId} on ${slug}`);
-    } catch (err) {
-        console.error('[ActivityPub] Error handling announce:', err.message);
-    }
+    await handleReaction(activity, 'shares');
 }
 
 async function handleComment(activity) {
@@ -559,19 +523,10 @@ async function handleComment(activity) {
     
     // Check if replying to a post - extract slug from URL
     if (!postId) {
-        const urlObj = new URL(note.inReplyTo);
-        const pathParts = urlObj.pathname.split('/').filter(p => p);
-        const skipPaths = ['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies'];
-        for (let i = pathParts.length - 1; i >= 0; i--) {
-            const segment = pathParts[i];
-            if (segment && !skipPaths.includes(segment) && !segment.match(/^\d{4}$/)) {
-                const post = Posts.getBySlug(segment);
-                if (post) {
-                    if (DEBUG_AP) console.log('[ActivityPub] Comment is reply to post:', segment);
-                    postId = post.id;
-                    break;
-                }
-            }
+        const result = extractSlugFromUrl(note.inReplyTo);
+        if (result) {
+            if (DEBUG_AP) console.log('[ActivityPub] Comment is reply to post:', result.slug);
+            postId = result.post.id;
         }
     }
     
@@ -978,48 +933,23 @@ function normalizeToKeyObject(keyData) {
     return null;
 }
 
+const SIG_ALG_MAP = {
+    'ed25519': [null], 'ed25519-sha512': [null],
+    'ecdsa-sha256': ['sha256'], 'ecdsa-sha384': ['sha384'], 'ecdsa-sha512': ['sha512']
+};
+
+const KEY_TYPE_ALG_MAP = {
+    'ed25519': [null], 'ed448': [null], 'ec': ['sha256', 'sha384', 'sha512'], 'rsa': ['RSA-SHA256', 'RSA-SHA512']
+};
+
 function getVerifyAlgorithms(keyType, sigAlgorithm) {
-    // Explicit algorithm specified
-    if (sigAlgorithm === 'ed25519' || sigAlgorithm === 'ed25519-sha512') {
-        return [null]; // Ed25519 doesn't use a hash
-    }
-    if (sigAlgorithm === 'ecdsa-sha256') {
-        return ['sha256'];
-    }
-    if (sigAlgorithm === 'ecdsa-sha384') {
-        return ['sha384'];
-    }
-    if (sigAlgorithm === 'ecdsa-sha512') {
-        return ['sha512'];
-    }
+    if (sigAlgorithm && SIG_ALG_MAP[sigAlgorithm]) return SIG_ALG_MAP[sigAlgorithm];
+    if (!sigAlgorithm && keyType && KEY_TYPE_ALG_MAP[keyType]) return KEY_TYPE_ALG_MAP[keyType];
     if (sigAlgorithm === 'rsa-sha256' || sigAlgorithm === 'hs2019') {
-        // hs2019 is modern - use the key type to determine algorithm
-        if (keyType === 'ed25519') {
-            return [null];
-        }
-        if (keyType === 'ec') {
-            // Try common EC curves
-            return ['sha256', 'sha384', 'sha512'];
-        }
+        if (keyType === 'ed25519') return [null];
+        if (keyType === 'ec') return ['sha256', 'sha384', 'sha512'];
         return ['RSA-SHA256', 'RSA-SHA512'];
     }
-    
-    // No algorithm specified - infer from key type
-    if (keyType === 'ed25519') {
-        return [null]; // Ed25519 signs message directly
-    }
-    if (keyType === 'ed448') {
-        return [null];
-    }
-    if (keyType === 'ec') {
-        // Try ECDSA with common hashes
-        return ['sha256', 'sha384', 'sha512'];
-    }
-    if (keyType === 'rsa') {
-        return ['RSA-SHA256', 'RSA-SHA512'];
-    }
-    
-    // Default fallback - try common algorithms
     return ['RSA-SHA256', 'sha256', 'sha512', null];
 }
 
@@ -1420,67 +1350,12 @@ async function processOutboundActivities() {
 
 // Queue an Update activity for a post
 function queuePostUpdate(post) {
-    const article = {
-        id: postUrl(post.slug),
-        type: 'Article',
-        attributedTo: ACTOR_URL,
-        content: post.content,
-        name: post.title,
-        published: post.published_at,
-        updated: post.updated_at,
-        url: postUrl(post.slug),
-        to: ['https://www.w3.org/ns/activitystreams#Public'],
-        cc: [USER.followers],
-        likes: {
-            id: postLikesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: post.likes_count || 0
-        },
-        shares: {
-            id: postSharesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: post.shares_count || 0
-        },
-        tag: post.tags.map(tag => ({
-            type: 'Hashtag',
-            name: `#${tag}`,
-            href: tagUrl(tag)
-        }))
-    };
-    
-    return queueOutboundActivity('Update', article);
+    return queueOutboundActivity('Update', buildArticleObject(post));
 }
 
 // Queue a Create activity for a new post
 function queuePostCreate(post) {
-    const article = {
-        id: postUrl(post.slug),
-        type: 'Article',
-        attributedTo: ACTOR_URL,
-        content: post.content,
-        name: post.title,
-        published: post.published_at,
-        url: postUrl(post.slug),
-        to: ['https://www.w3.org/ns/activitystreams#Public'],
-        cc: [USER.followers],
-        likes: {
-            id: postLikesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: 0
-        },
-        shares: {
-            id: postSharesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: 0
-        },
-        tag: post.tags.map(tag => ({
-            type: 'Hashtag',
-            name: `#${tag}`,
-            href: tagUrl(tag)
-        }))
-    };
-    
-    return queueOutboundActivity('Create', article);
+    return queueOutboundActivity('Create', buildArticleObject(post, { likes: 0, shares: 0 }));
 }
 
 // Queue an Update activity for the actor (profile changes)

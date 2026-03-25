@@ -54,10 +54,6 @@ function getRSS() {
     return rssCache;
 }
 
-function invalidateRSS() {
-    rssCache = null;
-}
-
 function updateRSSFile() {
     const rss = generateRSS();
     rssCache = rss;
@@ -69,4 +65,4 @@ function updateRSSFile() {
     }
 }
 
-module.exports = { getRSS, invalidateRSS, updateRSSFile };
+module.exports = { getRSS, updateRSSFile };

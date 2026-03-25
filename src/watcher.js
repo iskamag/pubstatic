@@ -18,11 +18,6 @@ function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Update RSS feed - now uses shared rss module with caching
-function updateRSS() {
-    updateRSSFile();
-}
-
 // Lazy load activitypub to avoid circular dependency issues
 function getActivityPub() {
     return require('./routes/activitypub');
@@ -161,7 +156,7 @@ function scanExistingFiles() {
         }
     });
     // Update RSS feed after scanning all files
-    updateRSS();
+    updateRSSFile();
 }
 
 function handleUserSettingsChange() {
@@ -238,7 +233,7 @@ function startWatcher() {
                         }
                     }
                     // Update RSS feed
-                    updateRSS();
+                    updateRSSFile();
                 }
             } catch (err) {
                 console.error(`[Watcher] Error parsing ${filePath}:`, err.message);
@@ -266,7 +261,7 @@ function startWatcher() {
                         }
                     }
                     // Update RSS feed
-                    updateRSS();
+                    updateRSSFile();
                 }
             } catch (err) {
                 console.error(`[Watcher] Error parsing ${filePath}:`, err.message);
@@ -280,7 +275,7 @@ function startWatcher() {
             Posts.deleteBySlug(slug);
             console.log(`[Watcher] Deleted post: ${slug}`);
             // Update RSS feed after deletion
-            updateRSS();
+            updateRSSFile();
         })
         .on('ready', () => {
             console.log('[Watcher] Initial scan complete. Ready for changes...');
@@ -346,7 +341,7 @@ function syncPostFile(filePath) {
         }
 
         // Update RSS feed
-        updateRSS();
+        updateRSSFile();
 
         return post;
     } else {
@@ -354,7 +349,7 @@ function syncPostFile(filePath) {
         Posts.deleteBySlug(slug);
         console.log(`[Watcher] Deleted post (file not found): ${slug}`);
         // Update RSS feed after deletion
-        updateRSS();
+        updateRSSFile();
         return null;
     }
 }
