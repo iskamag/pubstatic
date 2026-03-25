@@ -1,15 +1,16 @@
-# ActivityPub Blog
+# Pubstatic
 
-A minimalist, single-user blog with ActivityPub federation support.
+A simple blog for your simple website
 
 ## Features
 
 - **Zero JavaScript Frontend**: Pure HTML and CSS, no JavaScript required
 - **ActivityPub Support**: Follows, likes, comments, and shares from Fediverse instances (Mastodon, Pleroma, etc.)
-- **File-based Content**: Create and edit posts by adding HTML files to `content/posts/`
+- **File-based Content**: Create and edit posts just by adding HTML files to `content/posts/`
 - **Tag System**: Organize posts with tags
 - **RSS Feed**: Subscribe via RSS at `/rss.xml`
-- **Colorful Design**: Beautiful gradient accents with minimalist aesthetic
+- **Org-compatible** Just point your HTML exports to the posts folder!
+- **Featured posts** Embed /new to give the readers a glimpse of your writing.
 
 ## Installation
 
@@ -22,18 +23,8 @@ The server runs on http://localhost:6767 by default.
 
 ## Environment Variables
 
-Create a `.env` file or set environment variables:
+The config reads from environment variables, or .env. Read .env.example carefully. Here are the parameters not written there:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DOMAIN` | `localhost:6767` | Your domain (e.g., `blog.example.com`) |
-| `PROTOCOL` | `http` | `http` or `https` (use `https` in production) |
-| `USERNAME` | `admin` | Your ActivityPub username |
-| `PORT` | `6767` | Server port |
-| `DISPLAY_NAME` | `Blog Admin` | Display name shown on profile |
-| `BIO` | `A minimalist ActivityPub blog` | Profile bio |
-| `DEBUG_AP` | `false` | Enable verbose ActivityPub logging |
-| `BLOG_PATH` | `/` | Blog UI path (e.g., `/posts/` for integration with existing static sites) |
 | `RATE_LIMIT_ENABLED` | `true` | Enable/disable rate limiting on inbox |
 | `RATE_LIMIT_MAX` | `100` | Max requests per window per IP |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in milliseconds |
@@ -53,58 +44,6 @@ This logs:
 - HTTP Signature verification details (protocol, host, signing string, algorithm used)
 - Key object creation (type and algorithm)
 - Actor URL fetching
-
-## Security
-
-### HTTP Signature Verification
-
-All incoming activities require valid HTTP signatures. The server verifies:
-
-1. **Signature validity** - The signature must match the actor's public key
-2. **Actor ownership** - The activity's actor must match the signature's key owner
-3. **Digest verification** - Request body digest must match (when present)
-
-Supported signature algorithms:
-- RSA-SHA256, RSA-SHA512 (Mastodon, Pleroma)
-- Ed25519 (GoToSocial, Pixelfed)
-- ECDSA with P-256, P-384, P-521 curves
-
-### Undo Activity Protection
-
-Undo requests (for likes, shares, follows) are verified to ensure the requesting actor owns the original activity. Malicious actors cannot delete another user's likes or follows.
-
-### SSRF Protection
-
-Actor URLs and inbox URLs are validated before fetching to prevent Server-Side Request Forgery:
-
-- Blocks localhost (127.0.0.1, ::1)
-- Blocks private IP ranges (10.x, 172.16-31.x, 192.168.x)
-- Blocks cloud metadata endpoints (169.254.x.x)
-- Blocks internal TLDs (.local, .internal, .localhost)
-- Blocks IPv6 addresses
-- Only allows HTTP/HTTPS protocols
-
-### Rate Limiting
-
-The inbox endpoint is rate-limited to prevent abuse and denial-of-service attacks. Configuration:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RATE_LIMIT_ENABLED` | `true` | Set to `false` to disable (e.g., if using reverse proxy rate limiting) |
-| `RATE_LIMIT_MAX` | `100` | Maximum requests per window per IP |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Time window in milliseconds (default: 1 minute) |
-
-Example: To allow 200 requests per 5 minutes:
-
-```bash
-RATE_LIMIT_MAX=200 RATE_LIMIT_WINDOW_MS=300000
-```
-
-To disable rate limiting (when using nginx/Cloudflare rate limiting):
-
-```bash
-RATE_LIMIT_ENABLED=false
-```
 
 ## Creating Posts
 
@@ -205,6 +144,7 @@ The blog includes API endpoints for post management (available in test mode or w
 | `/api/clear-outbound-activities` | POST | Clear outbound activity queue |
 
 **Note:** API routes are mounted under `BLOG_PATH` and are localhost-only in production.
+
 | `/new` | GET | Embeddable latest posts (for iframe embedding) |
 | `/rss.xml` | GET | RSS feed |
 
@@ -284,20 +224,8 @@ location /.well-known/webfinger {
 }
 ```
 
-See `nginx-blog.example.conf` for a complete configuration including `/p/:slug/likes`, `/p/:slug/shares`, RSS, and static assets.
+See `nginx-blog.example.conf` for a complete configuration including `/posts/:slug/likes`, `/posts/:slug/shares`, RSS, and static assets.
 
-1. Set `PROTOCOL=https` in environment
-2. Use a reverse proxy (nginx, Caddy, etc.) with SSL
-3. Set your domain: `DOMAIN=blog.example.com`
-4. Configure user settings in `user-settings.json`:
-
-```json
-{
-  "display_name": "Your Name",
-  "bio": "Your blog description",
-  "avatar_url": "https://example.com/avatar.png"
-}
-```
 
 ## Troubleshooting
 
@@ -318,16 +246,6 @@ See `nginx-blog.example.conf` for a complete configuration including `/p/:slug/l
 3. Comments from ActivityPub include media attachments automatically
 4. Nested comments (replies) are supported with proper threading
 
-### Mastodon Not Delivering
-
-If Mastodon can fetch your posts but not send likes/comments:
-1. Mastodon may have marked your domain as unavailable after previous failures
-2. The Mastodon instance admin can clear this with:
-   ```sql
-   DELETE FROM unavailable_domains WHERE domain = 'yourdomain.com';
-   ```
-3. New followers should work immediately after clearing
-
 ### Signature Verification Failing
 
 If activities are being rejected with 401 errors:
@@ -343,7 +261,7 @@ To test signature verification manually:
 
 ```bash
 # Generate a key pair
-openssl genrsa -out private.pem 2048
+openssl genrsa -out private.pem 4096
 openssl rsa -in private.pem -pubout -out public.pem
 
 # Create a signed request (see HTTP Signatures spec)
