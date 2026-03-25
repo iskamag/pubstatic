@@ -55,7 +55,6 @@ function handlePinnedChange() {
     const slugs = loadPinnedSlugs();
     Posts.setPinned(slugs);
     console.log(`[Watcher] Updated pinned posts: ${slugs.join(', ') || '(none)'}`);
-    updateRSSFile();
 }
 
 function parsePostFile(filePath) {

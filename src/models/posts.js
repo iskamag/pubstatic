@@ -319,14 +319,12 @@ class Posts {
     }
 
     static setPinned(slugs) {
-        const now = new Date().toISOString();
-        
         db.prepare('UPDATE posts SET pinned = 0').run();
         
         if (slugs && slugs.length > 0) {
             const placeholders = slugs.map(() => '?').join(',');
-            const stmt = db.prepare(`UPDATE posts SET pinned = 1, updated_at = ? WHERE slug IN (${placeholders})`);
-            stmt.run(now, ...slugs);
+            const stmt = db.prepare(`UPDATE posts SET pinned = 1 WHERE slug IN (${placeholders})`);
+            stmt.run(...slugs);
         }
     }
 }

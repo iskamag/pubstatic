@@ -1716,6 +1716,39 @@ tags: test
         await page.request.post('/api/sync-pinned');
     });
     
+    test('pinning a post does not change updated_at timestamp', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `no-update-ts-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        fs.writeFileSync(postFile, `<!--
+title: No Update Timestamp ${uniqueId}
+tags: test
+-->
+<article><p>Original content</p></article>`);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        const response1 = await request.get(`/api/outbound-activities`);
+        const data1 = await response1.json();
+        const updateActivitiesBefore = data1.activities.filter(a => a.type === 'Update');
+        
+        fs.writeFileSync(PINNED_FILE, `${postSlug}\n`);
+        await request.post('/api/sync-pinned');
+        
+        const response2 = await request.get(`/api/outbound-activities`);
+        const data2 = await response2.json();
+        const updateActivitiesAfter = data2.activities.filter(a => a.type === 'Update');
+        
+        expect(updateActivitiesAfter.length).toBe(updateActivitiesBefore.length);
+        
+        if (fs.existsSync(postFile)) fs.unlinkSync(postFile);
+        fs.writeFileSync(PINNED_FILE, 'welcome\n');
+        await request.post('/api/sync-pinned');
+    });
+    
     test('pinned posts show tag on homepage', async ({ page }) => {
         const uniqueId = Date.now();
         const pinnedSlug = `homepage-pin-${uniqueId}`;
