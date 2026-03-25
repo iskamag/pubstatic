@@ -10,7 +10,7 @@ A simple blog for your simple website, accesible through the Fediverse.
 - **Tag System**: Organize posts with tags
 - **RSS Feed**: Subscribe via RSS at `/rss.xml`
 - **Org-compatible** Just point your HTML exports to the posts folder!
-- **Featured posts** Embed /new to give the readers a glimpse of your writing. They would see new and pinned posts of your choosing
+- **Featured posts** Embed `/new` to give the readers a glimpse of your writing. They would see new and pinned posts of your choosing
 
 ## Installation
 
@@ -23,7 +23,7 @@ The server runs on http://localhost:6767 by default.
 
 ## Environment Variables
 
-The config reads from environment variables, or .env. Read .env.example carefully. Here are the parameters not written there:
+The config reads from environment variables, or `.env`. Read `.env.example` carefully. Here are the parameters not written there:
 
 `RATE_LIMIT_ENABLED   (true)` - Enable/disable rate limiting on inbox
 
@@ -62,7 +62,7 @@ tags: tag1, tag2, tag3
 </article>
 ```
 
-The filename (without `.html`) becomes the post slug. For example, `my-first-post.html` will be accessible at `/p/my-first-post`.
+The filename (without `.html`) becomes the post slug. For example, `my-first-post.html` will be accessible at `/my-first-post`.
 
 ### Reserved Slugs
 
