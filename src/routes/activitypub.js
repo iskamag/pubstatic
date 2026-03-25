@@ -13,6 +13,18 @@ const router = express.Router();
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
 
+const FETCH_TIMEOUT = 10000; // 10 seconds
+
+async function fetchWithTimeout(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 // Rate limiting for inbox endpoint
 const inboxRateLimits = new Map(); // IP -> { count, resetTime }
 
@@ -144,7 +156,7 @@ function loadOrGenerateKeys() {
     
     // Generate new keys
     const keys = crypto.generateKeyPairSync('rsa', {
-        modulusLength: 2048,
+        modulusLength: 4096,
         publicKeyEncoding: { type: 'spki', format: 'pem' },
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
     });
@@ -435,12 +447,20 @@ router.post('/u/:username/inbox', async (req, res) => {
         }
         
         // Store activity
+        const activityId = activity.id || `${BLOG_ROOT}/activities/${Date.now()}`;
+        const existingActivity = db.prepare('SELECT id FROM activities WHERE activity_id = ?').get(activityId);
+        
+        if (existingActivity) {
+            if (DEBUG_AP) console.log('[ActivityPub] Activity already processed, skipping');
+            return res.status(202).json({ status: 'accepted' });
+        }
+        
         const stmt = db.prepare(`
-            INSERT OR IGNORE INTO activities (activity_id, type, actor, object, target, received_at)
+            INSERT INTO activities (activity_id, type, actor, object, target, received_at)
             VALUES (?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
-            activity.id || `${BLOG_ROOT}/activities/${Date.now()}`,
+            activityId,
             activity.type,
             typeof activity.actor === 'string' ? activity.actor : JSON.stringify(activity.actor),
             typeof activity.object === 'string' ? activity.object : JSON.stringify(activity.object),
@@ -609,7 +629,7 @@ async function handleComment(activity) {
     let actorName = actorId;
     try {
         if (isValidActorUrl(actorId)) {
-            const actorResponse = await fetch(actorId, {
+            const actorResponse = await fetchWithTimeout(actorId, {
                 headers: { 'Accept': 'application/activity+json' }
             });
             if (actorResponse.ok) {
@@ -694,7 +714,7 @@ async function handleFollow(activity) {
     
     try {
         // Fetch actor info to get their inbox
-        const actorResponse = await fetch(actorId, {
+        const actorResponse = await fetchWithTimeout(actorId, {
             headers: { 'Accept': 'application/activity+json' }
         });
         
@@ -740,7 +760,7 @@ async function handleFollow(activity) {
         const body = JSON.stringify(acceptActivity);
         const headers = signRequest(inboxUrl, 'POST', body, keys.privateKey, `${ACTOR_URL}#main-key`);
         
-        const response = await fetch(inboxUrl, {
+        const response = await fetchWithTimeout(inboxUrl, {
             method: 'POST',
             headers: headers,
             body: body
@@ -975,9 +995,9 @@ async function verifyHttpSignature(req) {
             const signatureTime = new Date(dateHeader);
             const now = new Date();
             const skewMinutes = Math.abs(now - signatureTime) / 1000 / 60;
-            if (skewMinutes > 30) {
+            if (skewMinutes > 5) {
                 console.warn('[ActivityPub] Signature timestamp too old:', dateHeader);
-                // Don't reject - some servers have clock skew, but log warning
+                return { valid: false, error: 'Signature timestamp too old' };
             }
         } catch (e) {
             console.warn('[ActivityPub] Invalid date header:', dateHeader);
@@ -1008,7 +1028,7 @@ async function verifyHttpSignature(req) {
         }
         
         if (DEBUG_AP) console.log('[ActivityPub] Fetching actor from:', actorUrl);
-        const actorResponse = await fetch(actorUrl, {
+        const actorResponse = await fetchWithTimeout(actorUrl, {
             headers: { 'Accept': 'application/activity+json' }
         });
         
@@ -1263,7 +1283,7 @@ async function deliverToInbox(inboxUrl, activity, privateKey, keyId) {
     const headers = signRequest(inboxUrl, 'POST', body, privateKey, keyId);
     
     try {
-        const response = await fetch(inboxUrl, {
+        const response = await fetchWithTimeout(inboxUrl, {
             method: 'POST',
             headers: headers,
             body: body

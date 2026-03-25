@@ -41,18 +41,6 @@ class Posts {
         return parsePost(stmt.get(slug));
     }
 
-    static getById(id) {
-        const stmt = db.prepare(`
-            SELECT p.*,
-                COALESCE(l.likes_count, 0) as likes_count,
-                COALESCE(c.comments_count, 0) as comments_count,
-                COALESCE(s.shares_count, 0) as shares_count
-            FROM posts p ${COUNTS_JOIN}
-            WHERE p.id = ?
-        `);
-        return parsePost(stmt.get(id));
-    }
-
     static RESERVED_SLUGS = new Set([
         // Blog routes
         'new', 'u', 'tag', 'archive', 'static', 'rss', 'feed', 'index',
@@ -299,14 +287,6 @@ class Posts {
         });
         
         return rootComments;
-    }
-
-    static getCommentsCount(postId) {
-        const stmt = db.prepare(`
-            SELECT COUNT(*) as count FROM comments 
-            WHERE post_id = ?
-        `);
-        return stmt.get(postId).count;
     }
 
     static getLikes(postId) {
