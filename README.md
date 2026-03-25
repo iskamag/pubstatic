@@ -229,44 +229,6 @@ location /.well-known/webfinger {
 
 See `nginx-blog.example.conf` for a complete configuration including `/posts/:slug/likes`, `/posts/:slug/shares`, RSS, and static assets.
 
+# License
 
-## Troubleshooting
-
-### Federation Not Working
-
-1. Ensure `PROTOCOL=https` is set
-2. Verify WebFinger returns correct URLs:
-   ```bash
-   curl https://yourdomain.com/.well-known/webfinger?resource=acct:username@yourdomain.com
-   ```
-3. Enable debug logging: `DEBUG_AP=true npm start`
-4. Check that POST requests reach your server (check nginx logs)
-
-### Comments Not Appearing
-
-1. Old posts may have different URLs from domain/protocol changes
-2. URL matching is now domain-agnostic - it extracts post slugs
-3. Comments from ActivityPub include media attachments automatically
-4. Nested comments (replies) are supported with proper threading
-
-### Signature Verification Failing
-
-If activities are being rejected with 401 errors:
-1. Ensure `PROTOCOL=https` and `X-Forwarded-Proto` header is set by your reverse proxy
-2. Enable debug logging: `DEBUG_AP=true npm start`
-3. Check the logged signing string matches what the sending server expects
-4. Verify the actor URL is accessible and returns a valid public key
-5. Some servers use different header orders - check the `headers` field in the Signature header
-
-### Testing with curl
-
-To test signature verification manually:
-
-```bash
-# Generate a key pair
-openssl genrsa -out private.pem 4096
-openssl rsa -in private.pem -pubout -out public.pem
-
-# Create a signed request (see HTTP Signatures spec)
-# Your server logs will show the signing string when DEBUG_AP=true
-```
+MIT
