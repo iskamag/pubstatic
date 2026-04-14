@@ -211,6 +211,21 @@ test.describe('Embed Endpoint', () => {
         expect(href).toMatch(/^\/[a-zA-Z0-9-]+$/);
     });
 
+    test('embed post click navigates the top window when framed', async ({ page, baseURL }) => {
+        await page.goto('/');
+        await page.setContent('<iframe src="/new" title="embedded new posts"></iframe>');
+
+        const firstPostLink = page.frameLocator('iframe').locator('.post-title a').first();
+        const href = await firstPostLink.getAttribute('href');
+
+        await Promise.all([
+            page.waitForURL(`${baseURL}${href}`),
+            firstPostLink.click()
+        ]);
+
+        expect(page.url()).toBe(`${baseURL}${href}`);
+    });
+
     test('embed is self-contained HTML', async ({ page }) => {
         await page.goto('/new');
         
