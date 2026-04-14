@@ -1,6 +1,12 @@
 const { test, expect } = require('@playwright/test');
+const { normalizeIndexHtmlPath } = require('../src/path-utils');
 
 test.describe('Blog Frontend', () => {
+    test('index.html paths are normalized to trailing slash paths', () => {
+        expect(normalizeIndexHtmlPath('/index.html')).toBe('/');
+        expect(normalizeIndexHtmlPath('/post1/index.html')).toBe('/post1/');
+    });
+
     test('homepage loads successfully', async ({ page }) => {
         await page.goto('/');
         await expect(page).toHaveTitle(/My ActivityPub Blog/);
@@ -78,6 +84,13 @@ test.describe('Blog Frontend', () => {
         
         await expect(page.locator('.error-page')).toBeVisible();
         await expect(page.locator('h1')).toContainText('404');
+    });
+
+    test('index.html requests redirect to clean paths', async ({ request }) => {
+        const response = await request.get('/index.html', { maxRedirects: 0 });
+
+        expect(response.status()).toBe(301);
+        expect(response.headers().location).toBe('/');
     });
 
     test('site footer is visible', async ({ page }) => {

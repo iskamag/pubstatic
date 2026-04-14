@@ -8,6 +8,7 @@ const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
 const { getRSS } = require('./rss');
 const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('./urls');
+const { normalizeIndexHtmlPath } = require('./path-utils');
 const db = require('./db');
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
@@ -113,6 +114,22 @@ app.get('/.well-known/webfinger', (req, res) => {
 // Frontend routes - mounted at BLOG_PATH
 // All ActivityPub endpoints are also under BLOG_PATH
 const blog = express.Router();
+
+blog.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return next();
+    }
+
+    const [pathname, query = ''] = req.originalUrl.split('?');
+    const normalizedPath = normalizeIndexHtmlPath(pathname);
+
+    if (normalizedPath === pathname) {
+        return next();
+    }
+
+    const location = query ? `${normalizedPath}?${query}` : normalizedPath;
+    return res.redirect(301, location);
+});
 
 // Static files under BLOG_PATH
 blog.use('/static', express.static(path.join(__dirname, '..', 'public')));
