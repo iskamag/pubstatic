@@ -43,7 +43,7 @@
         }
         .post-excerpt {
             font-size: 0.875rem;
-            color: #444;
+            color: #413d3d;
             margin-bottom: 6px;
             display: -webkit-box;
             -webkit-line-clamp: 2;
@@ -78,10 +78,10 @@
         }
         @media (prefers-color-scheme: dark) {
             body { background: transparent; color: #e5e5e5; }
-            .post-title a { color: #e5e5e5; }
+            .post-title a { color: #454545; }
             .post-title a:hover { color: #7ca428; }
             .post-meta { color: #999; }
-            .post-excerpt { color: #bbb; }
+            .post-excerpt { color: #413d3d; }
             .post-stats { color: #888; }
             .post-card { border-color: #333; }
             .tag.pinned { background: #d35400; }
@@ -99,10 +99,10 @@
             </h2>
             <div class="post-meta">
                 <time datetime="<%= post.published_at %>">
-                    <%= new Date(post.published_at).toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
+                    <%= new Date(post.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
                     }) %>
                 </time>
             </div>
