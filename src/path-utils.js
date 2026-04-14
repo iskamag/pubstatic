@@ -11,6 +11,10 @@ function normalizeIndexHtmlPath(pathname) {
         return pathname.slice(0, -'index.html'.length);
     }
 
+    if (pathname.endsWith('.html')) {
+        return `${pathname.slice(0, -'.html'.length)}/`;
+    }
+
     return pathname;
 }
 

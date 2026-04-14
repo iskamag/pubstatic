@@ -5,6 +5,7 @@ test.describe('Blog Frontend', () => {
     test('index.html paths are normalized to trailing slash paths', () => {
         expect(normalizeIndexHtmlPath('/index.html')).toBe('/');
         expect(normalizeIndexHtmlPath('/post1/index.html')).toBe('/post1/');
+        expect(normalizeIndexHtmlPath('/post1.html')).toBe('/post1/');
     });
 
     test('homepage loads successfully', async ({ page }) => {
@@ -91,6 +92,13 @@ test.describe('Blog Frontend', () => {
 
         expect(response.status()).toBe(301);
         expect(response.headers().location).toBe('/');
+    });
+
+    test('html post requests redirect to clean paths', async ({ request }) => {
+        const response = await request.get('/welcome.html', { maxRedirects: 0 });
+
+        expect(response.status()).toBe(301);
+        expect(response.headers().location).toBe('/welcome/');
     });
 
     test('site footer is visible', async ({ page }) => {
