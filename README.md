@@ -201,7 +201,7 @@ You can pin a post (or several) to the top of your list by writing to `content/p
 
 ## Integrating with Existing Static Sites
 
-The blog can run alongside an existing static website. Set `BLOG_PATH` to serve the blog UI from a sub-path while ActivityPub endpoints remain at root:
+The blog can run alongside an existing static website. Set `BLOG_PATH` to serve the blog and ActivityPub routes from a sub-path while WebFinger stays at root:
 
 ```bash
 BLOG_PATH=/posts npm start
@@ -216,7 +216,12 @@ location / {
     try_files $uri $uri/ =404;
 }
 
-# Blog UI at /posts/
+# Redirect /posts to /posts/
+location = /posts {
+    return 301 /posts/;
+}
+
+# Entire blog app at /posts/
 location /posts/ {
     proxy_pass http://localhost:6767;
     proxy_set_header Host $host;
@@ -229,7 +234,7 @@ location /.well-known/webfinger {
 }
 ```
 
-See `nginx-blog.example.conf` for a complete configuration including `/posts/:slug/likes`, `/posts/:slug/shares`, RSS, and static assets.
+See `nginx-blog.example.conf` for a complete configuration including `/posts/u/:username`, post interactions, RSS, and static assets.
 
 # License
 
