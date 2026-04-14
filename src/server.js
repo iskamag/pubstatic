@@ -156,9 +156,9 @@ if (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_API) {
     
     const filePath = path.join(__dirname, '..', 'content', 'posts', filename);
     try {
-        const post = syncPostFile(filePath);
-        if (post) {
-            res.json({ success: true, post });
+        const result = syncPostFile(filePath);
+        if (result && result.post) {
+            res.json({ success: true, ...result });
         } else {
             res.status(404).json({ success: false, error: 'File not found' });
         }

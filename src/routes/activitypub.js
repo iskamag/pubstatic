@@ -1273,8 +1273,15 @@ function queueOutboundActivity(type, object, recipients = null) {
             console.error('[ActivityPub] Error processing outbound activities:', err.message);
         });
     });
-    
-    return activityId;
+
+    return {
+        activityId,
+        type,
+        actor: ACTOR_URL,
+        object,
+        recipients: targetRecipients,
+        createdAt: now
+    };
 }
 
 // Deliver a single activity to an inbox

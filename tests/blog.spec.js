@@ -105,7 +105,8 @@ test.describe('Blog Frontend', () => {
         await page.goto('/');
         
         await expect(page.locator('.site-footer')).toBeVisible();
-        await expect(page.locator('.site-footer')).toContainText('ActivityPub');
+        await expect(page.locator('.site-footer')).toContainText('pubstatic');
+        await expect(page.locator('.site-footer')).toContainText('Follow on Fediverse');
     });
 
     test('no JavaScript is loaded', async ({ page }) => {
@@ -981,7 +982,7 @@ excerpt: Test post excerpt
         
         // Verify post appears on homepage by looking for the specific post
         await page.goto('/');
-        await expect(page.locator('.post-card').filter({ hasText: postTitle })).toBeVisible({ timeout: 10000 });
+        await expect(page.getByRole('link', { name: postTitle, exact: true })).toBeVisible({ timeout: 10000 });
         
         // Verify post page is accessible
         await page.goto(`/${postSlug}`);
@@ -1308,33 +1309,25 @@ tags: test, federation, updated
 <article>${updatedContent}</article>`);
         
         // Sync the updated post (this is an edit, should queue Update activity)
-        await request.post('/api/sync-post', {
+        const updateResponse = await request.post('/api/sync-post', {
             data: { filename: `${postSlug}.html` }
         });
+        expect(updateResponse.status()).toBe(200);
+        const updateResult = await updateResponse.json();
         
         // Verify the post was updated on the site
         await page.reload();
         await expect(page.locator('.post-title')).toContainText(updatedTitle);
         await expect(page.locator('.post-content')).toContainText('Updated content for federation test');
-        
-        // Verify Update activity was queued in outbound_activities table
-        const outboundResponse = await request.get('/api/outbound-activities');
-        expect(outboundResponse.status()).toBe(200);
-        const outboundData = await outboundResponse.json();
-        
-        // Find the Update activity for this post
-        const updateActivity = outboundData.activities.find(a => 
-            a.type === 'Update' && 
-            a.object && 
-            a.object.includes(postSlug)
-        );
+
+        const updateActivity = updateResult.queuedActivity;
         
         expect(updateActivity, 'Update activity should be queued for federation').toBeDefined();
         expect(updateActivity.type).toBe('Update');
         expect(updateActivity.recipients).toContain(followerInbox);
         
         // Verify the activity contains the correct article data
-        const activityObject = JSON.parse(updateActivity.object);
+        const activityObject = updateActivity.object;
         expect(activityObject.name).toBe(updatedTitle);
         expect(activityObject.content).toContain('Updated content for federation test');
         expect(activityObject.type).toBe('Article');
@@ -1386,23 +1379,17 @@ tags: test
 -->
 <article><p>Updated with timestamp</p></article>`);
         
-        await request.post('/api/sync-post', {
+        const updateResponse = await request.post('/api/sync-post', {
             data: { filename: `${postSlug}.html` }
         });
+        expect(updateResponse.status()).toBe(200);
+        const updateResult = await updateResponse.json();
         
-        // Get the outbound activity
-        const outboundResponse = await request.get('/api/outbound-activities');
-        const outboundData = await outboundResponse.json();
-        
-        const updateActivity = outboundData.activities.find(a => 
-            a.type === 'Update' && 
-            a.object && 
-            a.object.includes(postSlug)
-        );
+        const updateActivity = updateResult.queuedActivity;
         
         expect(updateActivity).toBeDefined();
         
-        const activityObject = JSON.parse(updateActivity.object);
+        const activityObject = updateActivity.object;
         expect(activityObject.updated).toBeDefined();
         expect(activityObject.published).toBeDefined();
         expect(new Date(activityObject.updated).getTime()).toBeGreaterThanOrEqual(new Date(activityObject.published).getTime());
@@ -1741,6 +1728,8 @@ tags: test
         const uniqueId = Date.now();
         const postSlug = `no-update-ts-${uniqueId}`;
         const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+
+        await request.post('/api/clear-outbound-activities');
         
         fs.writeFileSync(postFile, `<!--
 title: No Update Timestamp ${uniqueId}
@@ -1754,14 +1743,18 @@ tags: test
         
         const response1 = await request.get(`/api/outbound-activities`);
         const data1 = await response1.json();
-        const updateActivitiesBefore = data1.activities.filter(a => a.type === 'Update');
+        const updateActivitiesBefore = data1.activities.filter(a =>
+            a.type === 'Update' && a.object && a.object.includes(postSlug)
+        );
         
         fs.writeFileSync(PINNED_FILE, `${postSlug}\n`);
         await request.post('/api/sync-pinned');
         
         const response2 = await request.get(`/api/outbound-activities`);
         const data2 = await response2.json();
-        const updateActivitiesAfter = data2.activities.filter(a => a.type === 'Update');
+        const updateActivitiesAfter = data2.activities.filter(a =>
+            a.type === 'Update' && a.object && a.object.includes(postSlug)
+        );
         
         expect(updateActivitiesAfter.length).toBe(updateActivitiesBefore.length);
         

@@ -366,6 +366,7 @@ function syncPostFile(filePath) {
         const post = parsePostFile(filePath);
         const slug = path.basename(filePath, '.html');
         const existing = Posts.getBySlug(slug);
+        let queuedActivity = null;
         
         // This will throw if slug is invalid
         Posts.createOrUpdate(post);
@@ -377,7 +378,7 @@ function syncPostFile(filePath) {
             if (activitypub.queuePostUpdate) {
                 const updatedPost = Posts.getBySlug(post.slug);
                 if (updatedPost) {
-                    activitypub.queuePostUpdate(updatedPost);
+                    queuedActivity = activitypub.queuePostUpdate(updatedPost);
                     console.log(`[Watcher] Queued Update activity for: ${post.slug}`);
                 }
             }
@@ -387,7 +388,7 @@ function syncPostFile(filePath) {
             if (activitypub.queuePostCreate) {
                 const newPost = Posts.getBySlug(post.slug);
                 if (newPost) {
-                    activitypub.queuePostCreate(newPost);
+                    queuedActivity = activitypub.queuePostCreate(newPost);
                     console.log(`[Watcher] Queued Create activity for: ${post.slug}`);
                 }
             }
@@ -396,14 +397,14 @@ function syncPostFile(filePath) {
         // Update RSS feed
         updateRSSFile();
 
-        return post;
+        return { post, queuedActivity };
     } else {
         const slug = path.basename(filePath, '.html');
         Posts.deleteBySlug(slug);
         console.log(`[Watcher] Deleted post (file not found): ${slug}`);
         // Update RSS feed after deletion
         updateRSSFile();
-        return null;
+        return { post: null, queuedActivity: null };
     }
 }
 
