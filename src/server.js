@@ -12,6 +12,7 @@ const { normalizeIndexHtmlPath } = require('./path-utils');
 const db = require('./db');
 
 const DEBUG_AP = process.env.DEBUG_AP === 'true' || process.env.DEBUG_AP === '1';
+const EMBED_PREVIEW_MODES = new Set(['compact', 'large']);
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -304,6 +305,12 @@ blog.get('/', async (req, res) => {
 blog.get('/new', (req, res) => {
     const requestedCount = parseInt(req.query.n) || 2;
     const count = Math.max(1, Math.min(requestedCount, 10)); // Clamp between 1 and 10
+    const preview = EMBED_PREVIEW_MODES.has(req.query.preview) ? req.query.preview : 'compact';
+    const defaultExcerptLines = preview === 'large' ? 5 : 2;
+    const requestedOverflow = parseInt(req.query.overflow, 10);
+    const excerptLines = Number.isNaN(requestedOverflow)
+        ? defaultExcerptLines
+        : Math.max(1, Math.min(requestedOverflow, 12));
     
     const pinned = Posts.getPinned();
     const pinnedSlugs = new Set(pinned.map(p => p.slug));
@@ -319,6 +326,8 @@ blog.get('/new', (req, res) => {
         pinnedSlugs: [...pinnedSlugs],
         blogPath: BLOG_PATH,
         blogRoot: BLOG_ROOT,
+        preview,
+        excerptLines,
         user: USER,
         layout: false
     });

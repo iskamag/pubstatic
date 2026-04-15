@@ -184,19 +184,25 @@ You can pin a post (or several) to the top of your list by writing to `content/p
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `?n=3` | `2` | Number of posts to display (1-10, capped) |
+| `?preview=large` | `compact` | Uses a larger card layout with bigger type and a longer excerpt |
+| `?overflow=4` | `2` or `5` | Controls how many excerpt lines are shown before post text is cut off |
 
 **Examples:**
 - `/new` - Shows 2 latest posts (default)
 - `/new?n=1` - Shows 1 post
 - `/new?n=5` - Shows 5 posts
 - `/new?n=100` - Capped at 10 posts
+- `/new?preview=large` - Uses a larger preview with more excerpt text
+- `/new?overflow=4` - Shows up to 4 lines of each excerpt before truncating
+- `/new?preview=large&overflow=7` - Uses the large preview and allows more excerpt text before truncating
 
 **Note:** If using `BLOG_PATH=/posts`, the embed endpoint would be at `/posts/new`.
 
 **Features:**
-- Condensed format: title, date, excerpt (2-line clamp), interactions
+- Condensed or large preview layout: title, date, excerpt, interactions
 - Self-contained styling with light/dark mode support
 - Transparent background for seamless integration
+- Configurable excerpt cutoff for embed previews
 - Responsive width
 
 ## Integrating with Existing Static Sites

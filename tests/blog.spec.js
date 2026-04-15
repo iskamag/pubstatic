@@ -246,6 +246,44 @@ test.describe('Embed Endpoint', () => {
         const darkModeStyles = await page.locator('style').allTextContents();
         expect(darkModeStyles.join('')).toContain('prefers-color-scheme: dark');
     });
+
+    test('embed supports large preview styling via URL parameter', async ({ page }) => {
+        await page.goto('/new?preview=large');
+
+        const bodyFontSize = await page.locator('body').evaluate(element => getComputedStyle(element).fontSize);
+        expect(bodyFontSize).toBe('16px');
+
+        const styles = await page.locator('style').allTextContents();
+        expect(styles.join('')).toContain('-webkit-line-clamp: 5');
+    });
+
+    test('embed overflow controls excerpt cutoff', async ({ page }) => {
+        await page.goto('/new?overflow=4');
+
+        const styles = await page.locator('style').allTextContents();
+        expect(styles.join('')).toContain('-webkit-line-clamp: 4');
+    });
+
+    test('embed overflow augments large preview excerpt cutoff', async ({ page }) => {
+        await page.goto('/new?preview=large&overflow=7');
+
+        const styles = await page.locator('style').allTextContents();
+        expect(styles.join('')).toContain('-webkit-line-clamp: 7');
+    });
+
+    test('embed overflow falls back to preview default for invalid values', async ({ page }) => {
+        await page.goto('/new?overflow=banana');
+
+        const styles = await page.locator('style').allTextContents();
+        expect(styles.join('')).toContain('-webkit-line-clamp: 2');
+    });
+
+    test('embed overflow is capped to avoid overly tall previews', async ({ page }) => {
+        await page.goto('/new?preview=large&overflow=100');
+
+        const styles = await page.locator('style').allTextContents();
+        expect(styles.join('')).toContain('-webkit-line-clamp: 12');
+    });
 });
 
 test.describe('ActivityPub Endpoints', () => {

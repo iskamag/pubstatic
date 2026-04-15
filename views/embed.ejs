@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<%
+    const isLargePreview = preview === 'large';
+    const bodyFontSize = isLargePreview ? '16px' : '14px';
+    const titleFontSize = isLargePreview ? '1.2rem' : '1rem';
+    const metaFontSize = isLargePreview ? '0.875rem' : '0.75rem';
+    const excerptFontSize = isLargePreview ? '1rem' : '0.875rem';
+    const statsFontSize = isLargePreview ? '0.875rem' : '0.75rem';
+    const tagFontSize = isLargePreview ? '0.875rem' : '0.75rem';
+    const containerWidth = isLargePreview ? '760px' : '600px';
+    const cardPadding = isLargePreview ? '18px 0' : '12px 0';
+%>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -9,23 +20,23 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: transparent;
-            font-size: 14px;
+            font-size: <%= bodyFontSize %>;
             line-height: 1.5;
             color: #1a1a1a;
         }
         .embed-container {
-            max-width: 600px;
+            max-width: <%= containerWidth %>;
             margin: 0 auto;
         }
         .post-card {
-            padding: 12px 0;
+            padding: <%= cardPadding %>;
             border-bottom: 1px solid #e5e5e5;
         }
         .post-card:last-child {
             border-bottom: none;
         }
         .post-title {
-            font-size: 1rem;
+            font-size: <%= titleFontSize %>;
             font-weight: 600;
             margin-bottom: 4px;
         }
@@ -37,21 +48,21 @@
             color: #5a9fd4;
         }
         .post-meta {
-            font-size: 0.75rem;
+            font-size: <%= metaFontSize %>;
             color: #666;
             margin-bottom: 4px;
         }
         .post-excerpt {
-            font-size: 0.875rem;
+            font-size: <%= excerptFontSize %>;
             color: #413d3d;
             margin-bottom: 6px;
             display: -webkit-box;
-            -webkit-line-clamp: 2;
+            -webkit-line-clamp: <%= excerptLines %>;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
         .post-stats {
-            font-size: 0.75rem;
+            font-size: <%= statsFontSize %>;
             color: #888;
         }
         .post-stats span {
@@ -62,7 +73,7 @@
         }
         .tag {
             display: inline-block;
-            font-size: 0.75rem;
+            font-size: <%= tagFontSize %>;
             padding: 2px 8px;
             border-radius: 3px;
             margin-right: 4px;
