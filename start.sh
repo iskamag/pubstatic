@@ -1,4 +1,4 @@
 #!/bin/sh
 
 cd $(dirname $0)
-npm start
+sudo -u pubstatic npm start > /var/log/pubstatic.log 2>/var/log/pubstatic.err

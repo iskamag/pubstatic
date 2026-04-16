@@ -7,7 +7,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-ExecStart=/root/prod-pubstatic/start.sh
+ExecStart=/home/pubstatic/prod-pubstatic/start.sh
 
 [Install]
 WantedBy=multi-user.target
