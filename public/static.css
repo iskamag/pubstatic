@@ -68,6 +68,7 @@ body {
 
 /* Header */
 .site-header {
+    position: relative;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     padding: var(--spacing-lg) 0;
@@ -88,6 +89,29 @@ body {
 
 .site-title:hover {
     opacity: 0.8;
+}
+
+.home-btn {
+    position: absolute;
+    top: var(--spacing-lg);
+    left: var(--spacing-lg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.home-btn:hover {
+    background: var(--gradient-1);
+    border-color: transparent;
+    color: #fff;
 }
 
 .site-description {
