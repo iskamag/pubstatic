@@ -64,6 +64,41 @@ tags: tag1, tag2, tag3
 
 The filename (without `.html`) becomes the post slug. For example, `my-first-post.html` will be accessible at `/my-first-post`.
 
+### Creating Posts with Org Mode
+
+You can author posts in Org mode and export them to HTML directly into `content/posts/`. Pubstatic extracts metadata from the exported HTML — the post title comes from the `<title>` tag, and tags are picked up from `<meta name="keywords">`.
+
+**Setup:** Load the included export hook in your Emacs config:
+
+```elisp
+(add-to-list 'load-path "/path/to/pubstatic/scripts")
+(require 'pubstatic-ox)
+M-x pubstatic-ox-setup
+```
+
+Or add to your init file:
+
+```elisp
+(add-to-list 'load-path "/path/to/pubstatic/scripts")
+(with-eval-after-load 'ox
+  (require 'pubstatic-ox)
+  (pubstatic-ox-setup))
+```
+
+**Usage:** In your `.org` file, set FILETAGS:
+
+```
+#+TITLE: My Post
+#+FILETAGS: :activitypub:emacs:org:
+#+OPTIONS: timestamp:nil
+
+Content here...
+```
+
+Export with `C-c C-e h h`. The resulting HTML will contain `<meta name="keywords" content="activitypub, emacs, org" />`, which pubstatic reads as post tags. The `<title>` element becomes the post title.
+
+To suppress the Org-generated timestamp at the bottom of the page, use `#+OPTIONS: timestamp:nil`.
+
 ### Reserved Slugs
 
 Some slugs are reserved and cannot be used for posts:

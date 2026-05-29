@@ -1456,6 +1456,78 @@ tags: test
             data: { actor_id: `https://example.com/users/timestamp-follower-${uniqueId}` }
         });
     });
+
+    test('extracts tags from <meta name="keywords"> in full HTML documents', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `meta-keywords-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+
+        const fileContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="keywords" content="orgmode, test, meta-tags" />
+<title>Meta Keywords Post ${uniqueId}</title>
+</head>
+<body>
+<article><p>Content with meta keyword tags.</p></article>
+</body>
+</html>`;
+
+        fs.writeFileSync(postFile, fileContent);
+
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        await page.goto(`/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Meta Keywords Post ${uniqueId}`, { timeout: 10000 });
+
+        await expect(page.locator('.post-tags .tag').nth(0)).toContainText('#orgmode');
+        await expect(page.locator('.post-tags .tag').nth(1)).toContainText('#test');
+        await expect(page.locator('.post-tags .tag').nth(2)).toContainText('#meta-tags');
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('comment frontmatter tags take precedence over <meta name="keywords">', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `meta-precedence-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+
+        const fileContent = `<!--
+title: Precedence Test ${uniqueId}
+tags: frontmatter, wins
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="keywords" content="meta, ignored" />
+</head>
+<body>
+<article><p>Frontmatter should win.</p></article>
+</body>
+</html>`;
+
+        fs.writeFileSync(postFile, fileContent);
+
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+
+        await page.goto(`/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Precedence Test ${uniqueId}`, { timeout: 10000 });
+
+        await expect(page.locator('.post-tags .tag').nth(0)).toContainText('#frontmatter');
+        await expect(page.locator('.post-tags .tag').nth(1)).toContainText('#wins');
+        await expect(page.locator('.post-tags .tag')).toHaveCount(2);
+
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
 });
 
 test.describe.serial('Pinned Posts', () => {
