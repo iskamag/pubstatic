@@ -5,15 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
-    <link rel="stylesheet" href="<%= bp.replace(/\/$/, '') %>/static.css">
+    <link rel="stylesheet" href="<%= bp.replace(/\/$/, '') %>/custom.css">
     <link rel="alternate" type="application/activity+json" href="<%= blogRoot %>/u/<%= user.preferredUsername %>">
 </head>
 <body>
     <header class="site-header">
         <div class="container">
-            <a href="/" class="home-btn" title="Home">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            </a>
+            <a href="/" class="home-btn" title="Home">Home</a>
             <a href="<%= bp %>" class="site-title"><%= user.name %></a>
             <p class="site-description"><%= user.summary %></p>
         </div>
