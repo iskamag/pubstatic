@@ -1087,6 +1087,112 @@ tags: test, updated
         await page.reload();
         await expect(page.locator('.post-title')).toContainText(updatedTitle);
         
+        // Verify tags were updated
+        await expect(page.locator('.post-tags .tag').nth(0)).toContainText('#test');
+        await expect(page.locator('.post-tags .tag').nth(1)).toContainText('#updated');
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('editing a post to add tags updates the display', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `add-tags-edit-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Create post with no tags
+        fs.writeFileSync(postFile, `<!--
+title: No Tags Post ${uniqueId}
+-->
+<article><p>Content without tags.</p></article>`);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        // Verify no tags initially
+        await page.goto(`/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`No Tags Post ${uniqueId}`, { timeout: 10000 });
+        await expect(page.locator('.post-tags .tag')).toHaveCount(0);
+        
+        // Edit to add tags
+        fs.writeFileSync(postFile, `<!--
+title: No Tags Post ${uniqueId}
+tags: orgmode, emacs, test
+-->
+<article><p>Content now with tags.</p></article>`);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        await page.reload();
+        await expect(page.locator('.post-tags .tag').nth(0)).toContainText('#orgmode');
+        await expect(page.locator('.post-tags .tag').nth(1)).toContainText('#emacs');
+        await expect(page.locator('.post-tags .tag').nth(2)).toContainText('#test');
+        
+        // Verify tags appear on homepage too
+        await page.goto('/');
+        const tagNav = page.locator('.tags-nav');
+        await expect(tagNav).toContainText('orgmode');
+        
+        // Cleanup
+        if (fs.existsSync(postFile)) {
+            fs.unlinkSync(postFile);
+        }
+    });
+
+    test('editing full HTML to add meta keywords tags works', async ({ page, request }) => {
+        const uniqueId = Date.now();
+        const postSlug = `meta-keywords-edit-${uniqueId}`;
+        const postFile = path.join(POSTS_DIR, `${postSlug}.html`);
+        
+        // Create full HTML post WITHOUT meta keywords (like org export without FILETAGS)
+        const noTagsContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Org No Tags ${uniqueId}</title>
+</head>
+<body>
+<article><p>Content from org export without tags.</p></article>
+</body>
+</html>`;
+        fs.writeFileSync(postFile, noTagsContent);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        await page.goto(`/${postSlug}`);
+        await expect(page.locator('.post-title')).toContainText(`Org No Tags ${uniqueId}`, { timeout: 10000 });
+        await expect(page.locator('.post-tags .tag')).toHaveCount(0);
+        
+        // Edit to add meta keywords (like re-export with FILETAGS)
+        const withTagsContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="keywords" content="orgmode, emacs, ox" />
+<title>Org No Tags ${uniqueId}</title>
+</head>
+<body>
+<article><p>Content from org export without tags.</p></article>
+</body>
+</html>`;
+        fs.writeFileSync(postFile, withTagsContent);
+        
+        await request.post('/api/sync-post', {
+            data: { filename: `${postSlug}.html` }
+        });
+        
+        await page.reload();
+        await expect(page.locator('.post-tags .tag').nth(0)).toContainText('#orgmode');
+        await expect(page.locator('.post-tags .tag').nth(1)).toContainText('#emacs');
+        await expect(page.locator('.post-tags .tag').nth(2)).toContainText('#ox');
+        
         // Cleanup
         if (fs.existsSync(postFile)) {
             fs.unlinkSync(postFile);
