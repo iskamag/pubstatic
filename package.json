@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "playwright test",
+    "test:org": "emacs --batch -l tests/pubstatic-ox-test.el",
+    "test:subpath": "playwright test --config=playwright.subpath.config.js",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug"
   },

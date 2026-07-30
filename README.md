@@ -99,6 +99,25 @@ Export with `C-c C-e h h`. The resulting HTML will contain `<meta name="keywords
 
 To suppress the Org-generated timestamp at the bottom of the page, use `#+OPTIONS: timestamp:nil`.
 
+#### Org attachments
+
+`pubstatic-ox` can publish local attachments referenced by an Org post. Configure its public directory and mount path once in Emacs (the mount path must match `BLOG_PATH`):
+
+```elisp
+(setq pubstatic-attachments-directory "/path/to/pubstatic/public"
+      pubstatic-blog-path "/posts") ; use "" when the blog is at the root
+```
+
+Then opt into copying for an individual post and use ordinary local file links:
+
+```org
+#+PUBSTATIC_ATTACHMENTS: copy
+
+[[file:images/sunrise.jpg][Sunrise over the lake]]
+```
+
+During HTML export, the hook copies each linked file to `public/uploads/<post-slug>/` and changes its URL to `/posts/static/uploads/<post-slug>/...`. It preserves safe subdirectories, URL-encodes filenames, handles image, audio, video, and ordinary file links, and rejects missing or non-regular files. Attachments are opt-in so normal Org exports remain read-only.
+
 ### Reserved Slugs
 
 Some slugs are reserved and cannot be used for posts:
