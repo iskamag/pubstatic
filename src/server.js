@@ -18,6 +18,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
 const app = express();
+const standardSite = require('./standard-site').install(app);
 
 // Setup view engine
 app.set('view engine', 'ejs');
@@ -534,6 +535,7 @@ const server = app.listen(PORT, () => {
     
     // Start file watcher
     startWatcher();
+    standardSite.start();
     console.log(`👁️  Watching content/posts/ folder...`);
 });
 

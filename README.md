@@ -120,6 +120,13 @@ Some slugs are reserved and cannot be used for posts:
 - Can only contain letters, numbers, hyphens, and underscores
 - Maximum 100 characters
 
+## Standard.site / ATProto
+
+Optionally publish your blog and full plain-text articles into your ATProto
+repository using Standard.site records. Disabled by default; Org/HTML exports
+remain the source of truth. Includes edits, deletions and verification metadata.
+See [setup, lifecycle and testing](docs/standard-site.md).
+
 ## ActivityPub Federation
 
 ### Following the Blog

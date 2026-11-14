@@ -1,5 +1,6 @@
 module.exports = {
     testDir: './tests',
+    testIgnore: '**/unit/**', // Node test runner suites use npm run test:unit
     timeout: 30000,
     expect: {
         timeout: 5000
