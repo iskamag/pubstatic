@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
+    <% if (typeof standardPublicationUri !== 'undefined' && standardPublicationUri) { %>
+    <link rel="site.standard.publication" href="<%= standardPublicationUri %>">
+    <% } %>
+    <% if (typeof standardDocumentUri !== 'undefined' && standardDocumentUri) { %>
+    <link rel="site.standard.document" href="<%= standardDocumentUri %>">
+    <% } %>
     <link rel="stylesheet" href="<%= bp.replace(/\/$/, '') %>/static.css">
     <link rel="alternate" type="application/activity+json" href="<%= blogRoot %>/u/<%= user.preferredUsername %>">
 </head>
