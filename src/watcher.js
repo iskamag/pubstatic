@@ -254,7 +254,6 @@ function startWatcher() {
                 
                 // If post didn't exist, this is a new post - queue Create activity and update RSS
                 if (!existing) {
-                    require('./bluesky').queuePost(Posts.getBySlug(post.slug));
                     const activitypub = getActivityPub();
                     if (activitypub.queuePostCreate) {
                         const newPost = Posts.getBySlug(post.slug);
@@ -385,7 +384,6 @@ function syncPostFile(filePath) {
             }
         } else {
             // Post didn't exist, this is new - queue Create activity
-            require('./bluesky').queuePost(Posts.getBySlug(post.slug));
             const activitypub = getActivityPub();
             if (activitypub.queuePostCreate) {
                 const newPost = Posts.getBySlug(post.slug);

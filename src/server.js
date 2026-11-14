@@ -534,7 +534,6 @@ const server = app.listen(PORT, () => {
     
     // Start file watcher
     startWatcher();
-    require('./bluesky').startPublisher();
     console.log(`👁️  Watching content/posts/ folder...`);
 });
 
