@@ -5,7 +5,7 @@ const crypto = require('crypto');
 
 const COUNTS_JOIN = `
     LEFT JOIN (SELECT post_id, COUNT(*) as likes_count FROM likes GROUP BY post_id) l ON p.id = l.post_id
-    LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments GROUP BY post_id) c ON p.id = c.post_id
+    LEFT JOIN (SELECT post_id, COUNT(*) as comments_count FROM comments WHERE hidden = 0 GROUP BY post_id) c ON p.id = c.post_id
     LEFT JOIN (SELECT post_id, COUNT(*) as shares_count FROM shares GROUP BY post_id) s ON p.id = s.post_id`;
 
 function parsePost(post) {
@@ -126,7 +126,7 @@ class Posts {
 
         // Calculate content hash to detect actual changes
         const contentHash = crypto.createHash('md5')
-            .update(JSON.stringify({ title, content, tags }))
+            .update(JSON.stringify({ title, content, excerpt, tags }))
             .digest('hex');
         
         const now = new Date().toISOString();
@@ -271,6 +271,13 @@ class Posts {
         
         // First pass: create map and identify roots
         comments.forEach(comment => {
+            // Retain a tombstone for hidden parents so visible replies keep their place.
+            if (comment.hidden) {
+                comment.content = 'This comment has been hidden by the blog owner.';
+                comment.actor_name = 'Hidden comment';
+                comment.actor_url = '';
+                comment.activity_id = null;
+            }
             comment.replies = [];
             commentMap.set(comment.id, comment);
             if (!comment.parent_id) {

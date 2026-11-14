@@ -53,7 +53,7 @@
 function countAllComments(commentList) {
     let count = 0;
     commentList.forEach(comment => {
-        count += 1;
+        if (!comment.hidden) count += 1;
         if (comment.replies && comment.replies.length > 0) {
             count += countAllComments(comment.replies);
         }
@@ -68,9 +68,13 @@ function renderComment(comment, depth = 0) {
             <%= new Date(comment.created_at).toLocaleDateString() %>
         </time>
         <header class="comment-header">
+            <% if (comment.hidden) { %>
+            <span class="comment-author">Hidden comment</span>
+            <% } else { %>
             <a href="<%= comment.actor_url %>" class="comment-author" target="_blank" rel="noopener">
                 <%= comment.actor_name %>
             </a>
+            <% } %>
         </header>
         <div class="comment-content">
             <%- comment.content %>

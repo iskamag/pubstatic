@@ -891,3 +891,14 @@ main {
         font-size: 0.8125rem;
     }
 }
+
+/* Moderation follows the blog's typography and palette, with native forms. */
+.moderation { max-width: 75ch; padding-top: 2rem; padding-bottom: 3rem; }
+.moderation h1 { margin-bottom: 1rem; }
+.moderation-comment { overflow-wrap: anywhere; border-top: 1px solid var(--border-color); padding: 1.5rem 0; margin-top: 1.5rem; }
+.moderation-comment h2 { font-size: 1.25rem; }
+.moderation-content { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 1rem 0; }
+.moderation button { font: inherit; padding: .5rem 1rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--text-secondary); border-radius: var(--radius-sm); cursor: pointer; }
+.moderation button:hover { background: var(--bg-primary); }
+.moderation :focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+.moderation nav { display: flex; flex-wrap: wrap; gap: 1.5rem; }

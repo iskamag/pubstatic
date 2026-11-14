@@ -34,6 +34,9 @@ module.exports = {
     BLOG_PATH,
     BLOG_ROOT,
     RATE_LIMIT,
+    // Unknown values retain the historical full-article behavior.
+    AP_CONTENT_MODE: process.env.AP_CONTENT_MODE === 'summary' ? 'summary' : 'full',
+    AP_INCLUDE_EXCERPT: process.env.AP_INCLUDE_EXCERPT !== 'false',
     ACTOR_URL: `${BLOG_ROOT}/u/${USERNAME}`,
     USER: {
         preferredUsername: USERNAME,
