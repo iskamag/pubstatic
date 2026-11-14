@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Moderate comments</title>
+    <link rel="stylesheet" href="<%= blogPath %>/static.css">
+</head>
+<body>
+<main class="container moderation">
+    <h1>Moderate comments</h1>
+    <p>Hide comments from your blog or restore them. Replies stay in place. This does not delete the original on the Fediverse.</p>
+    <p><a href="<%= blogPath %>/">Back to blog</a></p>
+    <% if (!comments.length) { %><p>No comments on this page.</p><% } %>
+    <% comments.forEach(comment => { %>
+    <article class="moderation-comment" aria-labelledby="comment-<%= comment.id %>">
+        <h2 id="comment-<%= comment.id %>">Comment #<%= comment.id %> · <%= comment.hidden ? 'Hidden' : 'Visible' %></h2>
+        <p>On <a href="<%= blogPath %>/<%= encodeURIComponent(comment.slug) %>"><%= comment.title %></a></p>
+        <p><%= comment.actor_name || comment.actor_id %> · <time><%= comment.created_at %></time></p>
+        <pre class="moderation-content"><%= comment.content %></pre>
+        <form method="post" action="<%= blogPath %>/admin/comments/<%= comment.id %>">
+            <input type="hidden" name="csrf" value="<%= csrf %>">
+            <button type="submit" name="action" value="<%= comment.hidden ? 'restore' : 'hide' %>"><%= comment.hidden ? 'Restore' : 'Hide' %> comment #<%= comment.id %></button>
+        </form>
+    </article>
+    <% }); %>
+    <nav aria-label="Comment pages">
+        <% if (page > 1) { %><a href="?page=<%= page - 1 %>">Newer comments</a><% } %>
+        <% if (comments.length === 50) { %><a href="?page=<%= page + 1 %>">Older comments</a><% } %>
+    </nav>
+</main>
+</body>
+</html>

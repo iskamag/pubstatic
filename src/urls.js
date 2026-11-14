@@ -18,7 +18,7 @@ function postRepliesUrl(slug) {
 }
 
 function tagUrl(tag) {
-    return `${BLOG_ROOT}/tag/${tag}`;
+    return `${BLOG_ROOT}/tag/${encodeURIComponent(tag)}`;
 }
 
 function archiveUrl(year, month) {

@@ -6,6 +6,7 @@ const fs = require('fs');
 const { DOMAIN, USERNAME, ACTOR_URL, BASE_URL, BLOG_ROOT, USER, RATE_LIMIT } = require('../config');
 const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('../urls');
 const Posts = require('../models/posts');
+const { buildArticleObject } = require('../activitypub/article');
 const db = require('../db');
 const { marked } = require('marked');
 
@@ -89,35 +90,6 @@ function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildArticleObject(post, counts = {}) {
-    return {
-        id: postUrl(post.slug),
-        type: 'Article',
-        attributedTo: ACTOR_URL,
-        content: post.content,
-        name: post.title,
-        published: post.published_at,
-        updated: post.updated_at,
-        url: postUrl(post.slug),
-        to: ['https://www.w3.org/ns/activitystreams#Public'],
-        cc: [USER.followers],
-        likes: {
-            id: postLikesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: counts.likes ?? post.likes_count ?? 0
-        },
-        shares: {
-            id: postSharesUrl(post.slug),
-            type: 'OrderedCollection',
-            totalItems: counts.shares ?? post.shares_count ?? 0
-        },
-        tag: post.tags.map(tag => ({
-            type: 'Hashtag',
-            name: `#${tag}`,
-            href: tagUrl(tag)
-        }))
-    };
-}
 
 const SKIP_PATHS = new Set(['u', 'tag', 'archive', 'static', 'rss', 'new', 'likes', 'shares', 'replies']);
 

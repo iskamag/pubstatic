@@ -1,5 +1,8 @@
+require('./tests/offline.cjs');
+
 module.exports = {
     testDir: './tests',
+    testMatch: '**/*.spec.js',
     timeout: 30000,
     expect: {
         timeout: 5000
@@ -13,7 +16,8 @@ module.exports = {
         actionTimeout: 0,
         baseURL: 'http://localhost:6767',
         trace: 'on-first-retry',
-        headless: true
+        headless: true,
+        launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined }
     },
     projects: [
         {
@@ -24,9 +28,9 @@ module.exports = {
         }
     ],
     webServer: {
-        command: 'NODE_ENV=test npm start',
+        command: 'NODE_ENV=test NODE_OPTIONS="--require ./tests/offline.cjs" npm start',
         url: 'http://localhost:6767',
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         timeout: 120000
     }
 };

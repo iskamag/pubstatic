@@ -122,6 +122,30 @@ Some slugs are reserved and cannot be used for posts:
 
 ## ActivityPub Federation
 
+### Publishing full articles or summaries
+
+The default, `AP_CONTENT_MODE=full`, continues to federate the complete article.
+Set `AP_CONTENT_MODE=summary` to send the title, excerpt and article link instead.
+Set `AP_INCLUDE_EXCERPT=false` with summary mode for just the title and link.
+Restart the server after changing these settings. HTML pages and RSS still show
+full content; ActivityPub Create, Update, outbox and article JSON use the selected
+mode. Previously queued activities retain the content they had when queued.
+
+The excerpt comes from `excerpt:` in an HTML metadata comment, an Org-exported
+`<div class="abstract">`, or the existing automatic 200-character text preview.
+For Org, use `#+BEGIN_abstract` / `#+END_abstract` around the abstract before
+exporting to HTML. Summary text is escaped as plain text; tags and article URLs
+are retained. Editing only the excerpt is saved and included in subsequent updates.
+
+To test locally without federation, use a fresh local data directory with no
+followers. Set `AP_CONTENT_MODE=summary` and `BLOG_PATH=/posts`, start the app,
+and export a tagged Org article with an abstract into `content/posts/`.
+Request `/posts/<slug>` with `Accept: application/activity+json`: its `content`
+should contain the title, abstract and link, and omit the article body. The HTML
+page should still show the body. Repeat with `AP_INCLUDE_EXCERPT=false`, then
+`AP_CONTENT_MODE=full`; edit the abstract and verify the new value after sync.
+Do not add live followers or deliver test content to social services.
+
 ### Following the Blog
 
 From any ActivityPub-compatible platform (Mastodon, Pleroma, etc.), search for:
@@ -280,3 +304,17 @@ See `nginx-blog.example.conf` for a complete configuration including `/posts/u/:
 # License
 
 MIT
+
+## Single-user comment moderation
+
+Moderation is disabled unless `ADMIN_TOKEN` is at least 32 characters long. Generate a random token (for example, `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) and provide it in the server environment. Restart, then visit `/admin/comments` (or `/posts/admin/comments` with `BLOG_PATH=/posts`). Use the configured `USERNAME` as the HTTP Basic username and `ADMIN_TOKEN` as the password. Serve this interface over HTTPS, or use a local SSH tunnel; Basic credentials are sent on each request. No additional packages or accounts are needed. Rotating the token and restarting invalidates old credentials and forms. Browsers cache Basic credentials; use a private window and close it when finished.
+
+The queue shows 50 newest comments per page, including hidden comments. Remote content and author names are displayed as escaped text, never executable HTML or media. **Hide** replaces the public comment with a placeholder and removes it from visible comment counts; replies retain their positions and can be moderated separately. **Restore** makes the original comment visible again. Actions are local and reversible: they do not delete remote originals or send federation activities. New comments remain visible by default. Existing databases gain a `hidden` column automatically without changing existing visibility. The separate test API does not grant moderation access.
+
+### Manual moderation check (local only)
+
+1. Run `npm run test:unit` for isolated in-memory fixtures, including unsafe comments, authorization, migrations and hide/restore. No federation services are contacted.
+2. Start locally with a generated `ADMIN_TOKEN`. Open `/admin/comments` in a private browser window. Missing or incorrect credentials must prompt for authentication; a server without a token must return 404.
+3. With a local fixture comment, select **Hide**. Check that the article shows a placeholder, its visible comment count decreases, and replies remain. Select **Restore** and confirm the original returns. Reload the queue to confirm the state persists after restarting the server.
+4. Check the queue at a narrow viewport and navigate to the action buttons with Tab. Comment text should wrap and focus should remain visible. With `BLOG_PATH=/posts`, all links and form submissions should stay under `/posts`.
+5. Run the existing browser suite with `npm test -- --workers=1`. Its server preloads `tests/offline.cjs` to mock federation fetches; never preload that file in production. The historical suite expects a local `content/posts/welcome.html` containing a title of `Welcome` and tag `activitypub`, and `DISPLAY_NAME='My ActivityPub Blog'`. Those fixtures are not committed. If bundled Chromium is absent, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome executable (for example `/usr/bin/google-chrome`). The test runner always starts its own mocked server; stop any local server using port 6767 first.

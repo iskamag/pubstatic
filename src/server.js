@@ -6,8 +6,9 @@ const { DOMAIN, USERNAME, PORT, BASE_URL, BLOG_PATH, BLOG_ROOT, ACTOR_URL, USER 
 const Posts = require('./models/posts');
 const { startWatcher, syncPostFile, scanExistingFiles } = require('./watcher');
 const activitypubRoutes = require('./routes/activitypub');
+const { buildArticleObject } = require('./activitypub/article');
 const { getRSS } = require('./rss');
-const { postUrl, postLikesUrl, postSharesUrl, postRepliesUrl, tagUrl } = require('./urls');
+const { postUrl, postRepliesUrl } = require('./urls');
 const { normalizeIndexHtmlPath } = require('./path-utils');
 const db = require('./db');
 
@@ -115,6 +116,7 @@ app.get('/.well-known/webfinger', (req, res) => {
 // Frontend routes - mounted at BLOG_PATH
 // All ActivityPub endpoints are also under BLOG_PATH
 const blog = express.Router();
+blog.use('/admin', require('./routes/admin')(db, { username: USERNAME, blogPath: BLOG_PATH }));
 
 blog.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -447,31 +449,7 @@ blog.get('/:slug', (req, res, next) => {
         // Return ActivityPub JSON representation
         const article = {
             '@context': ['https://www.w3.org/ns/activitystreams', 'https://w3id.org/security/v1'],
-            id: postUrl(post.slug),
-            type: 'Article',
-            attributedTo: ACTOR_URL,
-            name: post.title,
-            content: post.content,
-            published: post.published_at,
-            updated: post.updated_at,
-            url: postUrl(post.slug),
-            to: ['https://www.w3.org/ns/activitystreams#Public'],
-            cc: [USER.followers],
-            tag: post.tags.map(tag => ({
-                type: 'Hashtag',
-                name: `#${tag}`,
-                href: tagUrl(tag)
-            })),
-            likes: {
-                id: postLikesUrl(post.slug),
-                type: 'OrderedCollection',
-                totalItems: post.likes_count || 0
-            },
-            shares: {
-                id: postSharesUrl(post.slug),
-                type: 'OrderedCollection',
-                totalItems: post.shares_count || 0
-            },
+            ...buildArticleObject(post),
             replies: {
                 id: postRepliesUrl(post.slug),
                 type: 'Collection',

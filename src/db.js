@@ -129,4 +129,9 @@ try {
     }
 }
 
+// Keep existing comments visible; moderation is a reversible local state.
+if (!db.prepare('PRAGMA table_info(comments)').all().some(column => column.name === 'hidden')) {
+    db.exec('ALTER TABLE comments ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1))');
+}
+
 module.exports = db;
