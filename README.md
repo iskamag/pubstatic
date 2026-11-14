@@ -120,6 +120,11 @@ Some slugs are reserved and cannot be used for posts:
 - Can only contain letters, numbers, hyphens, and underscores
 - Maximum 100 characters
 
+## Bluesky / ATProto
+
+Optional, disabled-by-default announcements of new posts to an existing account.
+See [setup, delivery semantics, and testing](docs/bluesky.md).
+
 ## ActivityPub Federation
 
 ### Following the Blog
